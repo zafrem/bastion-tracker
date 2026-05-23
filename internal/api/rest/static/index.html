@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bastion Control Center</title>
+<style>
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --bg4: #2d333b;
+  --border: #30363d; --text: #c9d1d9; --muted: #8b949e;
+  --blue: #58a6ff; --green: #3fb950; --yellow: #d29922;
+  --red: #f85149; --orange: #db6d28; --purple: #bc8cff;
+  --full: #58a6ff; --lite: #56d364; --minimal: #d2a679; --blocked: #f85149;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; overflow: hidden; }
+
+/* ── Layout ── */
+.app { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 48px 1fr; height: 100vh; }
+.topbar { grid-column: 1 / -1; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; }
+.logo { font-size: 16px; font-weight: 700; color: var(--blue); white-space: nowrap; }
+.topbar-stats { display: flex; gap: 16px; margin-left: auto; font-size: 12px; flex-wrap: wrap; }
+.stat-pill { background: var(--bg3); border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; display: flex; align-items: center; gap: 5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot.yellow { background: var(--yellow); }
+.dot.red { background: var(--red); }
+.dot.blue { background: var(--blue); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.35} }
+
+/* ── Sidebar ── */
+.sidebar { background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 2px; overflow: hidden; }
+.nav-item { width: 44px; height: 44px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: var(--muted); font-size: 18px; transition: all .15s; position: relative; text-decoration: none; border: none; background: none; }
+.nav-item:hover { background: var(--bg3); color: var(--text); }
+.nav-item.active { background: rgba(88,166,255,.15); color: var(--blue); }
+.nav-label { font-size: 8px; margin-top: 1px; line-height: 1; }
+.nav-sep { width: 28px; height: 1px; background: var(--border); margin: 4px 0; }
+
+/* ── Page ── */
+.page-area { overflow-y: auto; overflow-x: hidden; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.page { display: none; }
+.page.active { display: contents; }
+
+/* ── Cards ── */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.card-header { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card-title { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.card-body { padding: 14px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+
+/* ── Stat cards ── */
+.stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.stat-card .val { font-size: 28px; font-weight: 700; color: var(--blue); line-height: 1; }
+.stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* ── Buttons ── */
+.btn { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; transition: all .15s; white-space: nowrap; }
+.btn:hover { border-color: var(--blue); color: var(--blue); }
+.btn.active, .btn.primary { background: var(--blue); color: #000; border-color: var(--blue); }
+.btn.danger { border-color: var(--red); color: var(--red); }
+.btn.danger:hover { background: var(--red); color: #000; }
+.btn.success { border-color: var(--green); color: var(--green); }
+.btn.success:hover { background: var(--green); color: #000; }
+.btn-sm { padding: 2px 8px; font-size: 11px; }
+.btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Tables ── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th { padding: 7px 10px; text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: var(--bg3); }
+.tbl-wrap { overflow-x: auto; }
+
+/* ── Severity / status badges ── */
+.badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; display: inline-block; white-space: nowrap; font-weight: 600; }
+.badge.info, .badge.viewer { background: rgba(88,166,255,.15); color: var(--blue); }
+.badge.warning { background: rgba(210,153,34,.15); color: var(--yellow); }
+.badge.error, .badge.critical { background: rgba(248,81,73,.15); color: var(--red); }
+.badge.healthy, .badge.passed, .badge.resolved { background: rgba(63,185,80,.15); color: var(--green); }
+.badge.open, .badge.firing { background: rgba(248,81,73,.15); color: var(--red); }
+.badge.acknowledged { background: rgba(210,153,34,.15); color: var(--yellow); }
+.badge.triggered { background: rgba(248,81,73,.15); color: var(--red); }
+.badge.active-tok { background: rgba(88,166,255,.15); color: var(--blue); }
+.badge.blocked { background: rgba(248,81,73,.15); color: var(--red); }
+.badge.degraded { background: rgba(210,153,34,.15); color: var(--yellow); }
+.badge.down { background: rgba(248,81,73,.15); color: var(--red); }
+.badge.running { background: rgba(63,185,80,.15); color: var(--green); }
+.badge.escalated { background: rgba(219,109,40,.15); color: var(--orange); }
+
+/* ── Module color chips ── */
+.mod-chip { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: var(--bg3); white-space: nowrap; }
+.mod-chip.sentinel { color: var(--blue); }
+.mod-chip.vault { color: var(--purple); }
+.mod-chip.navigator { color: var(--green); }
+.mod-chip.anchor { color: var(--orange); }
+.mod-chip.security { color: var(--red); }
+.mod-chip.bypass { color: var(--orange); }
+.mod-chip.system { color: var(--muted); }
+
+/* ── Sev dot ── */
+.sev { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.sev.info { background: var(--blue); }
+.sev.warning { background: var(--yellow); }
+.sev.error,.sev.critical { background: var(--red); }
+
+/* ── Forms / inputs ── */
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 11px; color: var(--muted); font-weight: 600; }
+input[type=text], input[type=number], input[type=email], input[type=password], select, textarea {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 10px; border-radius: 5px; font-size: 12px; width: 100%;
+  font-family: inherit; outline: none; transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+textarea { resize: vertical; min-height: 70px; }
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.filter-bar .field { flex: 1; min-width: 100px; }
+
+/* ── Event list (live flow) ── */
+.ev-list { overflow-y: auto; max-height: 420px; }
+.ev-row { padding: 7px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; cursor: pointer; transition: background .1s; align-items: center; }
+.ev-row:hover { background: var(--bg3); }
+.ev-row:last-child { border-bottom: none; }
+.ev-body { flex: 1; min-width: 0; }
+.ev-type { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.ev-time { font-size: 11px; color: var(--muted); white-space: nowrap; text-align: right; }
+
+/* ── Alert / incident cards ── */
+.alert-card { background: var(--bg3); border-radius: 6px; padding: 10px 12px; border-left: 3px solid var(--border); }
+.alert-card.warning { border-left-color: var(--yellow); }
+.alert-card.critical, .alert-card.error { border-left-color: var(--red); }
+.alert-card.info { border-left-color: var(--blue); }
+.alert-card.open { border-left-color: var(--red); }
+.alert-title { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+.alert-meta { font-size: 11px; color: var(--muted); }
+.alert-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+/* ── Topology module cards ── */
+.topo-card { background: var(--bg3); border-radius: 6px; padding: 10px 12px; border: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.topo-info { flex: 1; min-width: 0; }
+.topo-name { font-size: 13px; font-weight: 600; }
+.topo-metrics { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+/* ── Pipeline bars ── */
+.pipe-bar-row { display: flex; align-items: center; gap: 10px; }
+.pipe-bar-label { width: 60px; font-size: 12px; color: var(--muted); }
+.pipe-bar-track { flex: 1; background: var(--bg3); border-radius: 4px; height: 8px; overflow: hidden; }
+.pipe-bar-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+.pipe-bar-fill.full { background: var(--full); }
+.pipe-bar-fill.lite { background: var(--lite); }
+.pipe-bar-fill.minimal { background: var(--minimal); }
+.pipe-bar-fill.blocked { background: var(--blocked); }
+.pipe-bar-pct { width: 36px; text-align: right; font-size: 12px; color: var(--muted); }
+
+/* ── Demo / scenario cards ── */
+.scenario-card { background: var(--bg3); border-radius: 6px; padding: 10px 12px; border: 1px solid var(--border); }
+.scenario-name { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.scenario-desc { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.record-section { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+
+/* ── Annotations ── */
+.annotation-row { padding: 6px 10px; border-left: 3px solid var(--blue); background: rgba(88,166,255,.05); border-radius: 0 4px 4px 0; margin-bottom: 4px; }
+.annotation-row.warning { border-left-color: var(--yellow); background: rgba(210,153,34,.05); }
+.annotation-row.error { border-left-color: var(--red); background: rgba(248,81,73,.05); }
+.ann-offset { font-size: 10px; color: var(--muted); }
+.ann-text { font-size: 12px; margin-top: 2px; }
+
+/* ── Timeline spans ── */
+.span-row { border-left: 2px solid var(--border); padding: 8px 12px; margin-bottom: 6px; }
+.span-row.passed { border-left-color: var(--green); }
+.span-row.blocked,.span-row.error { border-left-color: var(--red); }
+.timeline-bar { background: var(--bg3); border-radius: 2px; height: 14px; overflow: hidden; margin-top: 5px; }
+.timeline-fill { height: 100%; border-radius: 2px; min-width: 4px; }
+.timeline-fill.passed { background: var(--green); }
+.timeline-fill.blocked,.timeline-fill.error { background: var(--red); }
+
+/* ── Pipeline SVG ── */
+.pipeline-svg-wrap { background: var(--bg); overflow: hidden; }
+svg.pipeline { width: 100%; display: block; }
+.req-dot { }
+
+/* ── Modals ── */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; align-items: center; justify-content: center; z-index: 200; }
+.modal-backdrop.open { display: flex; }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; width: 560px; max-width: 95vw; max-height: 85vh; overflow-y: auto; padding: 20px; }
+.modal.wide { width: 720px; }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; line-height: 1; padding: 0; }
+.modal-title { font-size: 15px; font-weight: 700; }
+.modal-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.form-grid { display: flex; flex-direction: column; gap: 12px; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* ── Toast ── */
+#toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: 12px; max-width: 300px; animation: toastIn .2s ease; pointer-events: none; }
+.toast.success { border-left: 3px solid var(--green); }
+.toast.error { border-left: 3px solid var(--red); }
+.toast.info { border-left: 3px solid var(--blue); }
+@keyframes toastIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+
+/* ── Misc ── */
+.empty { text-align: center; color: var(--muted); padding: 24px; font-size: 12px; }
+.section-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+@keyframes slideIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: translateY(0); } }
+.new-ev { animation: slideIn .2s ease; }
+.page-header { font-size: 18px; font-weight: 700; color: var(--text); }
+.page-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="logo">🏛 Bastion</div>
+  <div class="topbar-stats">
+    <div class="stat-pill"><span class="dot blue" id="ws-dot"></span><span id="ws-label" style="font-size:11px;color:var(--muted)">Connecting…</span></div>
+    <div class="stat-pill">Events: <strong id="hd-events">0</strong></div>
+    <div class="stat-pill">Alerts: <strong id="hd-alerts">0</strong></div>
+    <div class="stat-pill" id="hd-rec-pill" style="display:none;border-color:var(--red)"><span class="dot red"></span><span style="font-size:11px;color:var(--red)">Recording</span></div>
+  </div>
+</div>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard',event)">
+    <span>🏠</span><span class="nav-label">Dash</span>
+  </a>
+  <a class="nav-item" data-page="live" onclick="navigate('live',event)">
+    <span>🌊</span><span class="nav-label">Live</span>
+  </a>
+  <a class="nav-item" data-page="traces" onclick="navigate('traces',event)">
+    <span>🔍</span><span class="nav-label">Traces</span>
+  </a>
+  <div class="nav-sep"></div>
+  <a class="nav-item" data-page="security" onclick="navigate('security',event)">
+    <span>🛡</span><span class="nav-label">Security</span>
+  </a>
+  <a class="nav-item" data-page="audit" onclick="navigate('audit',event)">
+    <span>📋</span><span class="nav-label">Audit</span>
+  </a>
+  <div class="nav-sep"></div>
+  <a class="nav-item" data-page="honey" onclick="navigate('honey',event)">
+    <span>🍯</span><span class="nav-label">Honey</span>
+  </a>
+  <a class="nav-item" data-page="demo" onclick="navigate('demo',event)">
+    <span>🎬</span><span class="nav-label">Demo</span>
+  </a>
+  <div class="nav-sep"></div>
+  <a class="nav-item" data-page="settings" onclick="navigate('settings',event)">
+    <span>⚙</span><span class="nav-label">Settings</span>
+  </a>
+</nav>
+
+<!-- Page area -->
+<div class="page-area" id="page-area">
+
+  <!-- ══════════════════════════════════════════════════════ DASHBOARD ══ -->
+  <div class="page" id="page-dashboard">
+    <div>
+      <div class="page-header">Dashboard</div>
+      <div class="page-sub">System overview and live health</div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="grid-4">
+      <div class="stat-card"><div class="val" id="dash-ev-count">0</div><div class="lbl">Events (session)</div></div>
+      <div class="stat-card"><div class="val" id="dash-alert-count" style="color:var(--red)">0</div><div class="lbl">Active Alerts</div></div>
+      <div class="stat-card"><div class="val" id="dash-inc-count" style="color:var(--orange)">0</div><div class="lbl">Open Incidents</div></div>
+      <div class="stat-card"><div class="val" id="dash-honey-count" style="color:var(--yellow)">0</div><div class="lbl">Honey Triggers</div></div>
+    </div>
+
+    <!-- Module health + pipeline dist -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Module Health</span><button class="btn btn-sm" onclick="refreshTopo()">Refresh</button></div>
+        <div class="card-body" id="dash-topo" style="display:flex;flex-direction:column;gap:8px;"><div class="empty">Loading…</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Pipeline Distribution (1h)</span></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="pipe-bar-row"><span class="pipe-bar-label">Full</span><div class="pipe-bar-track"><div class="pipe-bar-fill full" id="pb-full" style="width:0%"></div></div><span class="pipe-bar-pct" id="pp-full">—</span></div>
+          <div class="pipe-bar-row"><span class="pipe-bar-label">Lite</span><div class="pipe-bar-track"><div class="pipe-bar-fill lite" id="pb-lite" style="width:0%"></div></div><span class="pipe-bar-pct" id="pp-lite">—</span></div>
+          <div class="pipe-bar-row"><span class="pipe-bar-label">Minimal</span><div class="pipe-bar-track"><div class="pipe-bar-fill minimal" id="pb-minimal" style="width:0%"></div></div><span class="pipe-bar-pct" id="pp-minimal">—</span></div>
+          <div class="pipe-bar-row"><span class="pipe-bar-label">Blocked</span><div class="pipe-bar-track"><div class="pipe-bar-fill blocked" id="pb-blocked" style="width:0%"></div></div><span class="pipe-bar-pct" id="pp-blocked">—</span></div>
+          <div style="margin-top:4px;font-size:11px;color:var(--muted)">Total: <strong id="pb-total">0</strong> requests</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent events + recent alerts -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Recent Events</span></div>
+        <div class="ev-list" id="dash-events"><div class="empty">No events yet.</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Recent Alerts</span></div>
+        <div style="overflow-y:auto;max-height:300px;padding:10px;display:flex;flex-direction:column;gap:8px;" id="dash-alerts"><div class="empty">No active alerts.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ LIVE FLOW ══ -->
+  <div class="page" id="page-live">
+    <div>
+      <div class="page-header">Live Flow</div>
+      <div class="page-sub">Real-time event stream with server-side filtering</div>
+    </div>
+
+    <!-- Pipeline SVG -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Pipeline Animation</span>
+        <div class="btn-group">
+          <span style="font-size:11px;color:var(--muted);align-self:center">Speed:</span>
+          <button class="btn btn-sm active" id="spd-1" onclick="setSpeed(1)">1x</button>
+          <button class="btn btn-sm" id="spd-2" onclick="setSpeed(2)">2x</button>
+          <button class="btn btn-sm" id="spd-5" onclick="setSpeed(5)">5x</button>
+          <button class="btn btn-sm" id="pause-btn" onclick="togglePause()">⏸</button>
+        </div>
+      </div>
+      <div class="pipeline-svg-wrap">
+        <svg class="pipeline" viewBox="0 0 760 155" height="155">
+          <rect class="module-box" id="svg-sentinel" x="20" y="52" width="100" height="50" rx="6" style="fill:var(--bg2);stroke:var(--green);stroke-width:1.5"/>
+          <rect class="module-box" id="svg-vault"    x="170" y="52" width="100" height="50" rx="6" style="fill:var(--bg2);stroke:var(--green);stroke-width:1.5"/>
+          <rect class="module-box" id="svg-navigator" x="320" y="52" width="100" height="50" rx="6" style="fill:var(--bg2);stroke:var(--green);stroke-width:1.5"/>
+          <rect class="module-box" id="svg-anchor"  x="470" y="52" width="100" height="50" rx="6" style="fill:var(--bg2);stroke:var(--green);stroke-width:1.5"/>
+          <rect class="module-box" id="svg-llm"     x="620" y="52" width="100" height="50" rx="6" style="fill:var(--bg2);stroke:var(--muted);stroke-width:1"/>
+          <text font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle" x="70" y="73">Sentinel</text>
+          <text font-size="10" fill="var(--muted)" text-anchor="middle" x="70" y="87" id="svt-sentinel">healthy</text>
+          <text font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle" x="220" y="73">Vault</text>
+          <text font-size="10" fill="var(--muted)" text-anchor="middle" x="220" y="87" id="svt-vault">healthy</text>
+          <text font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle" x="370" y="73">Navigator</text>
+          <text font-size="10" fill="var(--muted)" text-anchor="middle" x="370" y="87" id="svt-navigator">healthy</text>
+          <text font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle" x="520" y="73">Anchor</text>
+          <text font-size="10" fill="var(--muted)" text-anchor="middle" x="520" y="87" id="svt-anchor">healthy</text>
+          <text font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle" x="670" y="73">LLM</text>
+          <text font-size="10" fill="var(--muted)" text-anchor="middle" x="670" y="87">endpoint</text>
+          <!-- Full pipeline lines -->
+          <line x1="120" y1="77" x2="170" y2="77" stroke="var(--full)" stroke-width="1.5" stroke-opacity=".35"/>
+          <line x1="270" y1="77" x2="320" y2="77" stroke="var(--full)" stroke-width="1.5" stroke-opacity=".35"/>
+          <line x1="420" y1="77" x2="470" y2="77" stroke="var(--full)" stroke-width="1.5" stroke-opacity=".35"/>
+          <line x1="570" y1="77" x2="620" y2="77" stroke="var(--full)" stroke-width="1.5" stroke-opacity=".35"/>
+          <!-- Lite bypass curve -->
+          <path d="M120,67 Q245,25 320,67" stroke="var(--lite)" stroke-width="1.5" fill="none" stroke-dasharray="4,3" stroke-opacity=".45"/>
+          <!-- Legend -->
+          <circle cx="28" cy="140" r="4" fill="var(--full)"/>
+          <text x="38" y="144" font-size="10" fill="var(--muted)">Full</text>
+          <circle cx="90" cy="140" r="4" fill="var(--lite)"/>
+          <text x="100" y="144" font-size="10" fill="var(--muted)">Lite</text>
+          <circle cx="150" cy="140" r="4" fill="var(--blocked)"/>
+          <text x="160" y="144" font-size="10" fill="var(--muted)">Blocked</text>
+          <g id="svg-dots"></g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- WS filter controls -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Server-Side Filter</span>
+        <span style="font-size:11px;color:var(--muted)">Filters are sent to the server — only matching events stream to you</span>
+      </div>
+      <div class="card-body">
+        <div class="filter-bar">
+          <div class="field"><label>Module</label><input type="text" id="ws-f-module" placeholder="e.g. sentinel" oninput="applyWSFilter()"></div>
+          <div class="field"><label>Severity</label>
+            <select id="ws-f-severity" onchange="applyWSFilter()">
+              <option value="">All</option>
+              <option value="info">info</option>
+              <option value="warning">warning</option>
+              <option value="error">error</option>
+              <option value="critical">critical</option>
+            </select>
+          </div>
+          <div class="field"><label>Tenant ID</label><input type="text" id="ws-f-tenant" placeholder="e.g. tenant-a" oninput="applyWSFilter()"></div>
+          <div style="align-self:flex-end"><button class="btn" onclick="clearWSFilter()">Clear Filter</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event stream -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Event Stream</span>
+        <div class="btn-group">
+          <input type="text" id="live-search" placeholder="local search…" style="width:140px;" oninput="filterLiveEvents()">
+          <button class="btn btn-sm" onclick="clearLiveEvents()">Clear</button>
+        </div>
+      </div>
+      <div class="ev-list" id="live-list"><div class="empty">Waiting for events…</div></div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════ TRACES ══ -->
+  <div class="page" id="page-traces">
+    <div>
+      <div class="page-header">Traces</div>
+      <div class="page-sub">Request traces through the pipeline</div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Trace List</span>
+        <button class="btn btn-sm" onclick="loadTraces()">Refresh</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Trace ID</th><th>Pipeline</th><th>Status</th><th>Spans</th><th>Total (ms)</th><th>Started</th><th></th></tr></thead>
+          <tbody id="traces-tbody"><tr><td colspan="7"><div class="empty">Loading…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ SECURITY ══ -->
+  <div class="page" id="page-security">
+    <div>
+      <div class="page-header">Security</div>
+      <div class="page-sub">Alerts, incidents, and security events</div>
+    </div>
+
+    <!-- Alerts -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Alerts</span>
+        <div class="btn-group">
+          <select id="sec-alert-status" onchange="loadAlerts()" style="width:120px;">
+            <option value="firing">Firing</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="resolved">Resolved</option>
+            <option value="">All</option>
+          </select>
+          <button class="btn btn-sm" onclick="loadAlerts()">Refresh</button>
+        </div>
+      </div>
+      <div id="alerts-list" style="display:flex;flex-direction:column;gap:8px;padding:12px;"><div class="empty">Loading…</div></div>
+    </div>
+
+    <!-- Incidents -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Incidents</span>
+        <button class="btn btn-sm" onclick="loadIncidents()">Refresh</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>ID</th><th>Title</th><th>Severity</th><th>Tenant</th><th>Status</th><th>Created</th><th></th></tr></thead>
+          <tbody id="incidents-tbody"><tr><td colspan="7"><div class="empty">Loading…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Security events -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Security Events</span>
+        <button class="btn btn-sm" onclick="loadSecEvents()">Refresh</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Event ID</th><th>Type</th><th>Module</th><th>Severity</th><th>Tenant</th><th>Time</th></tr></thead>
+          <tbody id="sec-events-tbody"><tr><td colspan="6"><div class="empty">Loading…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Run Books -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Run Books</span>
+        <div class="btn-group">
+          <input type="text" id="rb-filter" placeholder="filter by alert rule…" style="width:180px;" oninput="filterRunBooks()">
+          <button class="btn btn-sm" onclick="loadRunBooks()">Refresh</button>
+        </div>
+      </div>
+      <div id="runbooks-list" style="display:flex;flex-direction:column;gap:8px;padding:12px;"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ AUDIT LOG ══ -->
+  <div class="page" id="page-audit">
+    <div>
+      <div class="page-header">Audit Log</div>
+      <div class="page-sub">Full event history with filtering</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Filters</span></div>
+      <div class="card-body">
+        <div class="filter-bar">
+          <div class="field"><label>Module</label><input type="text" id="af-module" placeholder="sentinel…"></div>
+          <div class="field"><label>Severity</label>
+            <select id="af-severity">
+              <option value="">All</option>
+              <option value="info">info</option>
+              <option value="warning">warning</option>
+              <option value="error">error</option>
+              <option value="critical">critical</option>
+            </select>
+          </div>
+          <div class="field"><label>Status</label>
+            <select id="af-status">
+              <option value="">All</option>
+              <option value="passed">passed</option>
+              <option value="blocked">blocked</option>
+              <option value="error">error</option>
+            </select>
+          </div>
+          <div class="field"><label>Tenant ID</label><input type="text" id="af-tenant" placeholder="tenant-a…"></div>
+          <div class="field"><label>Keyword</label><input type="text" id="af-keyword" placeholder="search…"></div>
+          <div class="field"><label>Limit</label>
+            <select id="af-limit">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </div>
+          <div style="align-self:flex-end"><button class="btn primary" onclick="loadAudit()">Search</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Results</span><span id="audit-count" style="font-size:11px;color:var(--muted)"></span></div>
+      <div class="tbl-wrap" style="max-height:480px;overflow-y:auto;">
+        <table class="tbl">
+          <thead><tr><th>Event ID</th><th>Module</th><th>Type</th><th>Severity</th><th>Status</th><th>Tenant</th><th>User</th><th>Trace</th><th>Sig</th><th>Time</th></tr></thead>
+          <tbody id="audit-tbody"><tr><td colspan="10"><div class="empty">Run a search.</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════ HONEY TOKENS ══ -->
+  <div class="page" id="page-honey">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div class="page-header">Honey Tokens</div>
+        <div class="page-sub">Canary resources that alert on access</div>
+      </div>
+      <button class="btn primary" onclick="openCreateToken()">+ Create Token</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Active Tokens</span><button class="btn btn-sm" onclick="loadHoney()">Refresh</button></div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Name</th><th>Type</th><th>Location</th><th>Triggers</th><th>Last Triggered</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="honey-tbody"><tr><td colspan="7"><div class="empty">Loading…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════ DEMO ══ -->
+  <div class="page" id="page-demo">
+    <div>
+      <div class="page-header">Demo</div>
+      <div class="page-sub">Scenario replay and live event recording</div>
+    </div>
+
+    <!-- Recording controls -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Recording</span><span id="rec-status-badge"></span></div>
+      <div class="card-body">
+        <div id="rec-idle-ui">
+          <div class="form-grid">
+            <div class="filter-bar">
+              <div class="field" style="flex:2"><label>Scenario Name</label><input type="text" id="rec-name" placeholder="my-attack-pattern"></div>
+              <div class="field" style="flex:3"><label>Description</label><input type="text" id="rec-desc" placeholder="What this scenario captures…"></div>
+              <div style="align-self:flex-end"><button class="btn success" onclick="startRecording()">⏺ Start Recording</button></div>
+            </div>
+          </div>
+        </div>
+        <div id="rec-active-ui" style="display:none">
+          <div style="display:flex;align-items:center;gap:16px;">
+            <span class="dot red" style="animation:pulse 1s infinite"></span>
+            <span style="font-size:13px;color:var(--red);font-weight:600">Recording in progress…</span>
+            <span id="rec-ev-count" style="font-size:12px;color:var(--muted)">0 events captured</span>
+            <button class="btn danger" style="margin-left:auto;" onclick="stopRecording()">⏹ Stop &amp; Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scenarios -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Scenarios</span>
+        <button class="btn btn-sm" onclick="loadScenarios()">Refresh</button>
+      </div>
+      <div id="scenarios-list" style="display:flex;flex-direction:column;gap:8px;padding:12px;"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SETTINGS ══ -->
+  <div class="page" id="page-settings">
+    <div>
+      <div class="page-header">Settings</div>
+      <div class="page-sub">Server health and configuration</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Server Health</span><button class="btn btn-sm" onclick="loadHealth()">Refresh</button></div>
+        <div class="card-body" id="health-body"><div class="empty">Loading…</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">WebSocket Filter (Persistent)</span></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="filter-bar">
+              <div class="field"><label>Module</label><input type="text" id="cfg-f-module" placeholder="sentinel"></div>
+              <div class="field"><label>Severity</label>
+                <select id="cfg-f-severity">
+                  <option value="">All</option>
+                  <option value="info">info</option>
+                  <option value="warning">warning</option>
+                  <option value="error">error</option>
+                  <option value="critical">critical</option>
+                </select>
+              </div>
+              <div class="field"><label>Tenant</label><input type="text" id="cfg-f-tenant" placeholder="tenant-a"></div>
+            </div>
+            <div class="btn-group">
+              <button class="btn primary" onclick="saveCfgFilter()">Apply Filter</button>
+              <button class="btn" onclick="clearCfgFilter()">Clear</button>
+            </div>
+          </div>
+          <div style="margin-top:12px;font-size:11px;color:var(--muted)">Active filter: <span id="cfg-filter-display">none</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit log integrity -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Audit Log Integrity (HMAC-SHA256)</span>
+        <button class="btn btn-sm primary" onclick="runAuditVerify()">Run Verification</button>
+      </div>
+      <div class="card-body" id="audit-verify-body">
+        <div style="font-size:12px;color:var(--muted)">Every stored event is sealed with an HMAC-SHA256 signature over its identity fields. Click "Run Verification" to re-compute and compare all signatures in the current buffer.</div>
+      </div>
+    </div>
+
+    <!-- Dead letter queue -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Dead Letter Queue</span>
+        <button class="btn btn-sm" onclick="loadDeadLetters()">Refresh</button>
+      </div>
+      <div id="dead-letter-body" style="padding:12px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Events rejected by schema validation are buffered here for inspection. Required fields: <code>event_type</code>, <code>module</code>. Valid severities: info, warning, error, critical.</div>
+        <div id="dead-letter-list"><div class="empty">Click Refresh to load.</div></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-area -->
+</div><!-- /app -->
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- ══════════════════════════════════════════════════════ MODALS ══ -->
+
+<!-- Trace detail modal -->
+<div class="modal-backdrop" id="modal-trace" onclick="closeOnBackdrop(event,'modal-trace')">
+  <div class="modal wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="trace-modal-title">Trace</div>
+        <div class="modal-sub" id="trace-modal-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-trace')">✕</button>
+    </div>
+    <div id="trace-modal-body"></div>
+  </div>
+</div>
+
+<!-- Honey-token create modal -->
+<div class="modal-backdrop" id="modal-create-token" onclick="closeOnBackdrop(event,'modal-create-token')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Create Honey Token</div>
+      <button class="modal-close" onclick="closeModal('modal-create-token')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Name *</label><input type="text" id="ht-name" placeholder="customer-records-v2"></div>
+      <div class="field"><label>Description</label><input type="text" id="ht-desc" placeholder="Canary document in customer DB"></div>
+      <div class="field"><label>Location *</label><input type="text" id="ht-loc" placeholder="s3://internal-bucket/reports/"></div>
+      <div class="field"><label>Type</label>
+        <select id="ht-type">
+          <option value="document">document</option>
+          <option value="credential">credential</option>
+          <option value="api_key">api_key</option>
+          <option value="database_row">database_row</option>
+          <option value="endpoint">endpoint</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeModal('modal-create-token')">Cancel</button>
+      <button class="btn primary" onclick="submitCreateToken()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Honey-token triggers modal -->
+<div class="modal-backdrop" id="modal-triggers" onclick="closeOnBackdrop(event,'modal-triggers')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="triggers-modal-title">Triggers</div>
+      <button class="modal-close" onclick="closeModal('modal-triggers')">✕</button>
+    </div>
+    <div id="triggers-modal-body"></div>
+  </div>
+</div>
+
+<!-- Run book detail modal -->
+<div class="modal-backdrop" id="modal-runbook" onclick="closeOnBackdrop(event,'modal-runbook')">
+  <div class="modal wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="rb-modal-title">Run Book</div>
+        <div class="modal-sub" id="rb-modal-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-runbook')">✕</button>
+    </div>
+    <div id="rb-modal-body"></div>
+  </div>
+</div>
+
+<!-- Scenario detail modal (events + annotations) -->
+<div class="modal-backdrop" id="modal-scenario" onclick="closeOnBackdrop(event,'modal-scenario')">
+  <div class="modal wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="sc-modal-title">Scenario</div>
+        <div class="modal-sub" id="sc-modal-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-scenario')">✕</button>
+    </div>
+    <div id="sc-modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════ STATE ══
+const MAX_LIVE = 300;
+let ws = null;
+let wsFilter = {};
+let speed = 1;
+let paused = false;
+let dotSeq = 0;
+let sessionEvents = 0;
+let liveEvents = [];
+let currentPage = 'dashboard';
+let recEvCount = 0;
+let recActive = false;
+
+const MODULE_X = { sentinel:70, vault:220, navigator:370, anchor:520, llm:670 };
+const PIPE_Y = 77;
+
+// ══════════════════════════════════════════════════════ NAVIGATION ══
+function navigate(page, e) {
+  if (e) e.preventDefault();
+  currentPage = page;
+  history.pushState({ page }, '', '/' + page);
+  activatePage(page);
+}
+
+function activatePage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+  const el = document.getElementById('page-' + page);
+  if (el) el.classList.add('active');
+  // Load data for page
+  if (page === 'dashboard') { refreshTopo(); refreshPipeline(); loadDashAlerts(); }
+  else if (page === 'traces') loadTraces();
+  else if (page === 'security') { loadAlerts(); loadIncidents(); loadSecEvents(); loadRunBooks(); }
+  else if (page === 'audit') {}
+  else if (page === 'honey') loadHoney();
+  else if (page === 'demo') { loadScenarios(); checkRecStatus(); }
+  else if (page === 'settings') { loadHealth(); loadDeadLetters(); }
+}
+
+window.addEventListener('popstate', e => {
+  const page = e.state?.page || 'dashboard';
+  currentPage = page;
+  activatePage(page);
+});
+
+// ══════════════════════════════════════════════════════ WEBSOCKET ══
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws/events');
+  ws.onopen = () => {
+    setWSDot('green', 'Connected');
+    applyWSFilter();
+  };
+  ws.onclose = () => {
+    setWSDot('red', 'Disconnected — reconnecting…');
+    setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => setWSDot('red', 'Error');
+  ws.onmessage = e => {
+    try { handleWSMsg(JSON.parse(e.data)); } catch {}
+  };
+}
+
+function setWSDot(cls, label) {
+  document.getElementById('ws-dot').className = 'dot ' + cls;
+  document.getElementById('ws-label').textContent = label;
+}
+
+function handleWSMsg(msg) {
+  switch (msg.type) {
+    case 'event': onEvent(msg.payload); break;
+    case 'alert': onAlert(msg.payload); break;
+    case 'incident': onIncident(msg.payload); break;
+    case 'annotation': onAnnotation(msg.payload); break;
+  }
+}
+
+function sendWS(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ══════════════════════════════════════════════════ EVENT HANDLING ══
+function onEvent(ev) {
+  sessionEvents++;
+  liveEvents.unshift(ev);
+  if (liveEvents.length > MAX_LIVE) liveEvents.pop();
+  document.getElementById('hd-events').textContent = sessionEvents;
+  document.getElementById('dash-ev-count').textContent = sessionEvents;
+  if (!paused) {
+    animateDot(ev);
+    if (currentPage === 'live') appendLiveRow(ev);
+    if (currentPage === 'dashboard') appendDashRow(ev);
+  }
+  if (recActive) {
+    recEvCount++;
+    const el = document.getElementById('rec-ev-count');
+    if (el) el.textContent = recEvCount + ' events captured';
+  }
+}
+
+function onAlert(al) {
+  const count = parseInt(document.getElementById('hd-alerts').textContent || '0') + 1;
+  document.getElementById('hd-alerts').textContent = count;
+  document.getElementById('dash-alert-count').textContent = count;
+  toast('Alert fired: ' + al.rule_name, 'error');
+  if (currentPage === 'security') loadAlerts();
+  if (currentPage === 'dashboard') loadDashAlerts();
+}
+
+function onIncident(inc) {
+  const count = parseInt(document.getElementById('dash-inc-count').textContent || '0') + 1;
+  document.getElementById('dash-inc-count').textContent = count;
+  toast('Incident created: ' + inc.title, 'error');
+  if (currentPage === 'security') loadIncidents();
+}
+
+function onAnnotation(ann) {
+  // Show annotation as toast during replay
+  toast('[' + ann.offset_ms + 'ms] ' + ann.text, 'info');
+}
+
+// ══════════════════════════════════════════════════════ LIVE PAGE ══
+function appendLiveRow(ev) {
+  const list = document.getElementById('live-list');
+  const empty = list.querySelector('.empty');
+  if (empty) empty.remove();
+  const search = document.getElementById('live-search')?.value.toLowerCase();
+  const json = JSON.stringify(ev).toLowerCase();
+  if (search && !json.includes(search)) return;
+  const row = makeLiveRow(ev);
+  list.insertBefore(row, list.firstChild);
+  while (list.children.length > 150) list.removeChild(list.lastChild);
+}
+
+function makeLiveRow(ev) {
+  const row = document.createElement('div');
+  row.className = 'ev-row new-ev';
+  row.onclick = () => showTrace(ev.trace_id);
+  const time = new Date(ev.timestamp).toLocaleTimeString();
+  row.innerHTML = `
+    <span class="sev ${ev.severity || 'info'}"></span>
+    <span class="mod-chip ${ev.module}">${ev.module || '?'}</span>
+    <div class="ev-body">
+      <div class="ev-type">${ev.event_type}</div>
+      <div class="ev-meta">${ev.tenant_id || ''}${ev.user_id ? ' · ' + ev.user_id : ''}</div>
+    </div>
+    <div class="ev-time">
+      <div>${time}</div>
+      <div style="color:${ev.status==='blocked'||ev.status==='error'?'var(--red)':'var(--muted)'}">${ev.status||''}</div>
+    </div>`;
+  return row;
+}
+
+function filterLiveEvents() {
+  const s = document.getElementById('live-search').value.toLowerCase();
+  document.querySelectorAll('#live-list .ev-row').forEach(r => {
+    r.style.display = (!s || r.textContent.toLowerCase().includes(s)) ? '' : 'none';
+  });
+}
+
+function clearLiveEvents() {
+  liveEvents = [];
+  document.getElementById('live-list').innerHTML = '<div class="empty">Cleared.</div>';
+}
+
+function applyWSFilter() {
+  const module = document.getElementById('ws-f-module')?.value.trim() || '';
+  const severity = document.getElementById('ws-f-severity')?.value || '';
+  const tenant = document.getElementById('ws-f-tenant')?.value.trim() || '';
+  wsFilter = { module, severity, tenant_id: tenant };
+  sendWS({ type: 'set_filter', module, severity, tenant_id: tenant });
+}
+
+function clearWSFilter() {
+  ['ws-f-module','ws-f-tenant'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  const sel = document.getElementById('ws-f-severity'); if(sel) sel.value = '';
+  wsFilter = {};
+  sendWS({ type: 'set_filter', module: '', severity: '', tenant_id: '' });
+}
+
+// ════════════════════════════════════════════════════ DASHBOARD ══
+function appendDashRow(ev) {
+  const list = document.getElementById('dash-events');
+  const empty = list.querySelector('.empty');
+  if (empty) empty.remove();
+  const row = makeLiveRow(ev);
+  list.insertBefore(row, list.firstChild);
+  while (list.children.length > 30) list.removeChild(list.lastChild);
+}
+
+async function loadDashAlerts() {
+  const r = await api('/v1/alerts?status=firing');
+  const alerts = r || [];
+  document.getElementById('hd-alerts').textContent = alerts.length;
+  document.getElementById('dash-alert-count').textContent = alerts.length;
+  const el = document.getElementById('dash-alerts');
+  if (!alerts.length) { el.innerHTML = '<div class="empty">No active alerts.</div>'; return; }
+  el.innerHTML = alerts.slice(0,5).map(al => `
+    <div class="alert-card ${al.severity}">
+      <div class="alert-title">${al.rule_name}</div>
+      <div class="alert-meta">${al.message}</div>
+      <div class="alert-actions">
+        <button class="btn btn-sm" onclick="ackAlert('${al.alert_id}')">Ack</button>
+        <button class="btn btn-sm danger" onclick="resolveAlert('${al.alert_id}')">Resolve</button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════ PIPELINE SVG ══
+function animateDot(ev) {
+  const mod = ev.module;
+  if (!MODULE_X[mod]) return;
+  const pipe = ev.pipeline_type || 'full';
+  const cls = pipe === 'lite' ? 'var(--lite)' : pipe === 'minimal' ? 'var(--minimal)' : ev.status === 'blocked' ? 'var(--blocked)' : 'var(--full)';
+  const x = MODULE_X[mod];
+  const order = pipe === 'lite' ? ['sentinel','navigator','anchor','llm'] :
+                pipe === 'minimal' ? ['sentinel','llm'] :
+                ['sentinel','vault','navigator','anchor','llm'];
+  const idx = order.indexOf(mod);
+  const nextMod = ev.status === 'blocked' ? null : order[idx+1];
+  const destX = nextMod ? MODULE_X[nextMod] : x;
+  const destY = ev.status === 'blocked' ? PIPE_Y - 28 : PIPE_Y;
+  const layer = document.getElementById('svg-dots');
+  const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  c.setAttribute('cx', x); c.setAttribute('cy', PIPE_Y); c.setAttribute('r','5');
+  c.setAttribute('fill', cls); c.setAttribute('opacity','0.9');
+  layer.appendChild(c);
+  const dur = Math.max(280, 550 / speed);
+  const anim = c.animate([
+    { transform:'translate(0,0)', opacity:1 },
+    { transform:`translate(${destX-x}px,${destY-PIPE_Y}px)`, opacity:0 }
+  ], { duration: dur, easing:'ease-in-out', fill:'forwards' });
+  anim.onfinish = () => c.remove();
+}
+
+function setSpeed(s) {
+  speed = s;
+  [1,2,5].forEach(v => {
+    const b = document.getElementById('spd-'+v);
+    if (b) b.classList.toggle('active', v === s);
+  });
+}
+
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('pause-btn');
+  btn.textContent = paused ? '▶' : '⏸';
+  btn.classList.toggle('active', paused);
+}
+
+// ════════════════════════════════════════════════════ TOPOLOGY ══
+async function refreshTopo() {
+  const data = await api('/v1/topology');
+  if (!data) return;
+  // Update SVG boxes
+  (data.modules || []).forEach(m => {
+    const box = document.getElementById('svg-' + m.module);
+    if (box) {
+      const col = m.status === 'healthy' ? 'var(--green)' : m.status === 'degraded' ? 'var(--yellow)' : 'var(--red)';
+      box.style.stroke = col;
+    }
+    const lbl = document.getElementById('svt-' + m.module);
+    if (lbl) lbl.textContent = m.latency_ms.toFixed(0) + 'ms · ' + m.status;
+  });
+  // Dashboard topo cards
+  const el = document.getElementById('dash-topo');
+  if (!el) return;
+  if (!data.modules?.length) { el.innerHTML = '<div class="empty">No topology data.</div>'; return; }
+  el.innerHTML = data.modules.map(m => {
+    const col = m.status==='healthy'?'green':m.status==='degraded'?'yellow':'red';
+    return `<div class="topo-card">
+      <span class="dot ${col}"></span>
+      <div class="topo-info">
+        <div class="topo-name">${m.module}</div>
+        <div class="topo-metrics">${m.latency_ms.toFixed(1)}ms · ${(m.error_rate*100).toFixed(1)}% err · ${m.throughput.toFixed(2)}/s</div>
+      </div>
+      <span class="badge ${m.status}">${m.status}</span>
+    </div>`;
+  }).join('');
+}
+
+async function refreshPipeline() {
+  const stats = await api('/v1/pipelines/stats');
+  if (!stats) return;
+  const total = stats.total_requests || 0;
+  document.getElementById('pb-total').textContent = total;
+  const bd = stats.breakdown || {};
+  ['full','lite','minimal','blocked'].forEach(t => {
+    const count = bd[t] || 0;
+    const pct = total > 0 ? Math.round(count/total*100) : 0;
+    document.getElementById('pb-'+t).style.width = pct+'%';
+    document.getElementById('pp-'+t).textContent = pct+'%';
+  });
+}
+
+// ══════════════════════════════════════════════════════ TRACES ══
+async function loadTraces() {
+  const data = await api('/v1/traces?limit=100');
+  const tbody = document.getElementById('traces-tbody');
+  const traces = Array.isArray(data) ? data : (data?.traces || []);
+  if (!traces.length) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No traces found.</div></td></tr>'; return; }
+  tbody.innerHTML = traces.map(t => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px">${t.trace_id}</td>
+      <td><span class="badge">${t.pipeline_type||'?'}</span></td>
+      <td><span class="badge ${t.status}">${t.status||'?'}</span></td>
+      <td>${(t.spans||[]).length}</td>
+      <td>${t.total_ms ?? '—'}ms</td>
+      <td>${t.start_time ? new Date(t.start_time).toLocaleString() : '—'}</td>
+      <td><button class="btn btn-sm" onclick="showTrace('${t.trace_id}')">View</button></td>
+    </tr>`).join('');
+}
+
+async function showTrace(traceID) {
+  if (!traceID) return;
+  const trace = await api('/v1/traces/' + traceID);
+  if (!trace) return;
+  document.getElementById('trace-modal-title').textContent = 'Trace: ' + trace.trace_id;
+  const start = trace.start_time ? new Date(trace.start_time).toLocaleString() : '—';
+  document.getElementById('trace-modal-meta').textContent =
+    `${start} · Pipeline: ${trace.pipeline_type||'?'} · Total: ${trace.total_ms ?? '?'}ms · Status: ${trace.status||'?'}`;
+  const spans = trace.spans || [];
+  const maxMs = Math.max(...spans.map(s => s.duration_ms||1), 1);
+  document.getElementById('trace-modal-body').innerHTML = spans.length ? spans.map(s => {
+    const pct = Math.max(4, Math.round((s.duration_ms||1)/maxMs*100));
+    return `<div class="span-row ${s.status||'passed'}">
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:12px;font-weight:600">${s.module} <span style="color:var(--muted);font-weight:400">${s.event_type}</span></span>
+        <span style="font-size:11px;color:var(--muted)">${s.duration_ms ?? '?'}ms</span>
+      </div>
+      <span class="badge ${s.status||'passed'}" style="margin-top:4px">${s.status||'passed'}</span>
+      <div class="timeline-bar"><div class="timeline-fill ${s.status||'passed'}" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('') : '<div class="empty">No spans.</div>';
+  openModal('modal-trace');
+}
+
+// ════════════════════════════════════════════════════ SECURITY ══
+async function loadAlerts() {
+  const status = document.getElementById('sec-alert-status')?.value || 'firing';
+  const data = await api('/v1/alerts' + (status ? '?status='+status : ''));
+  const alerts = Array.isArray(data) ? data : [];
+  const el = document.getElementById('alerts-list');
+  if (!alerts.length) { el.innerHTML = '<div class="empty">No alerts.</div>'; return; }
+  el.innerHTML = alerts.map(al => {
+    const esc = al.escalated_at ? `<span class="badge escalated" style="margin-left:6px">escalated</span>` : '';
+    return `<div class="alert-card ${al.severity}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="alert-title">${al.rule_name} ${esc}</div>
+        <span class="badge ${al.status}">${al.status}</span>
+      </div>
+      <div class="alert-meta">${al.message}</div>
+      <div class="alert-meta" style="margin-top:3px">Module: ${al.module} · Tenant: ${al.tenant_id||'—'} · ${new Date(al.fired_at).toLocaleString()}</div>
+      <div class="alert-actions">
+        <button class="btn btn-sm" onclick="ackAlert('${al.alert_id}')">Acknowledge</button>
+        <button class="btn btn-sm danger" onclick="resolveAlert('${al.alert_id}')">Resolve</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadIncidents() {
+  const data = await api('/v1/security/incidents');
+  const incidents = Array.isArray(data) ? data : [];
+  const tbody = document.getElementById('incidents-tbody');
+  if (!incidents.length) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No incidents.</div></td></tr>'; return; }
+  tbody.innerHTML = incidents.map(inc => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px">${inc.incident_id}</td>
+      <td>${inc.title}</td>
+      <td><span class="badge ${inc.severity}">${inc.severity}</span></td>
+      <td>${inc.tenant_id||'—'}</td>
+      <td><span class="badge ${inc.status}">${inc.status}</span></td>
+      <td>${inc.created_at ? new Date(inc.created_at).toLocaleString() : '—'}</td>
+      <td>${inc.status==='open'?`<button class="btn btn-sm" onclick="resolveIncident('${inc.incident_id}')">Resolve</button>`:'—'}</td>
+    </tr>`).join('');
+}
+
+async function loadSecEvents() {
+  const data = await api('/v1/security/events');
+  const events = Array.isArray(data) ? data : (data?.events || []);
+  const tbody = document.getElementById('sec-events-tbody');
+  if (!events.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No security events.</div></td></tr>'; return; }
+  tbody.innerHTML = events.map(ev => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px">${ev.event_id}</td>
+      <td>${ev.event_type}</td>
+      <td><span class="mod-chip ${ev.module}">${ev.module}</span></td>
+      <td><span class="badge ${ev.severity}">${ev.severity}</span></td>
+      <td>${ev.tenant_id||'—'}</td>
+      <td>${ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
+    </tr>`).join('');
+}
+
+async function ackAlert(id) {
+  await api('/v1/alerts/'+id+'/acknowledge', 'POST');
+  toast('Alert acknowledged', 'info');
+  if (currentPage === 'security') loadAlerts();
+  if (currentPage === 'dashboard') loadDashAlerts();
+}
+
+async function resolveAlert(id) {
+  await api('/v1/alerts/'+id+'/resolve', 'POST');
+  toast('Alert resolved', 'info');
+  if (currentPage === 'security') loadAlerts();
+  if (currentPage === 'dashboard') loadDashAlerts();
+}
+
+async function resolveIncident(id) {
+  await api('/v1/security/incidents/'+id+'/resolve', 'POST', {});
+  toast('Incident resolved', 'info');
+  loadIncidents();
+}
+
+// ════════════════════════════════════════════════════ AUDIT LOG ══
+async function loadAudit() {
+  const params = new URLSearchParams();
+  const module = document.getElementById('af-module').value.trim();
+  const severity = document.getElementById('af-severity').value;
+  const status = document.getElementById('af-status').value;
+  const tenant = document.getElementById('af-tenant').value.trim();
+  const keyword = document.getElementById('af-keyword').value.trim();
+  const limit = document.getElementById('af-limit').value;
+  if (module) params.set('module', module);
+  if (severity) params.set('severity', severity);
+  if (status) params.set('status', status);
+  if (tenant) params.set('tenant_id', tenant);
+  if (keyword) params.set('q', keyword);
+  if (limit) params.set('limit', limit);
+  const url = '/v1/events' + (params.toString() ? '?'+params.toString() : '');
+  const data = await api(url);
+  const events = Array.isArray(data) ? data : (data?.events || []);
+  document.getElementById('audit-count').textContent = events.length + ' results';
+  const tbody = document.getElementById('audit-tbody');
+  if (!events.length) { tbody.innerHTML = '<tr><td colspan="9"><div class="empty">No results.</div></td></tr>'; return; }
+  tbody.innerHTML = events.map(ev => {
+    const sigBadge = ev.signature
+      ? `<span title="${ev.signature.substring(0,16)}…" style="color:var(--green);font-size:13px" title="Signed">✓</span>`
+      : `<span style="color:var(--muted);font-size:11px">—</span>`;
+    return `<tr>
+      <td style="font-family:monospace;font-size:11px">${ev.event_id}</td>
+      <td><span class="mod-chip ${ev.module}">${ev.module}</span></td>
+      <td>${ev.event_type}</td>
+      <td><span class="badge ${ev.severity}">${ev.severity}</span></td>
+      <td><span class="badge ${ev.status}">${ev.status||'—'}</span></td>
+      <td>${ev.tenant_id||'—'}</td>
+      <td>${ev.user_id||'—'}</td>
+      <td style="font-family:monospace;font-size:11px">${ev.trace_id ? `<a href="#" onclick="showTrace('${ev.trace_id}');return false;" style="color:var(--blue)">${ev.trace_id.substring(0,8)}…</a>` : '—'}</td>
+      <td style="text-align:center">${sigBadge}</td>
+      <td>${ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════ HONEY TOKENS ══
+async function loadHoney() {
+  const data = await api('/v1/honey-tokens');
+  const tokens = Array.isArray(data) ? data : [];
+  const tbody = document.getElementById('honey-tbody');
+  if (!tokens.length) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No honey tokens configured.</div></td></tr>'; return; }
+  const totalTriggers = tokens.reduce((s,t) => s + (t.trigger_count||0), 0);
+  document.getElementById('dash-honey-count').textContent = totalTriggers;
+  tbody.innerHTML = tokens.map(t => {
+    const status = t.trigger_count > 0 ? 'triggered' : 'active-tok';
+    const last = t.last_triggered ? new Date(t.last_triggered).toLocaleString() : 'never';
+    return `<tr>
+      <td style="font-weight:600">${t.name}</td>
+      <td>${t.type}</td>
+      <td style="font-family:monospace;font-size:11px">${t.location}</td>
+      <td>${t.trigger_count||0}</td>
+      <td>${last}</td>
+      <td><span class="badge ${status}">${status === 'triggered' ? 'triggered' : 'active'}</span></td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-sm" onclick="viewTriggers('${t.token_id}','${t.name}')">Triggers</button>
+          <button class="btn btn-sm danger" onclick="deleteToken('${t.token_id}')">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openCreateToken() {
+  ['ht-name','ht-desc','ht-loc'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('ht-type').value = 'document';
+  openModal('modal-create-token');
+}
+
+async function submitCreateToken() {
+  const name = document.getElementById('ht-name').value.trim();
+  const loc = document.getElementById('ht-loc').value.trim();
+  if (!name || !loc) { toast('Name and Location are required', 'error'); return; }
+  const body = {
+    name,
+    description: document.getElementById('ht-desc').value.trim() || name,
+    location: loc,
+    type: document.getElementById('ht-type').value,
+  };
+  const r = await apiRaw('/v1/honey-tokens', 'POST', body);
+  if (r.ok) {
+    toast('Honey token created', 'info');
+    closeModal('modal-create-token');
+    loadHoney();
+  } else {
+    toast('Failed to create token', 'error');
+  }
+}
+
+async function deleteToken(id) {
+  if (!confirm('Delete this honey token? This cannot be undone.')) return;
+  await api('/v1/honey-tokens/'+id, 'DELETE');
+  toast('Token deleted', 'info');
+  loadHoney();
+}
+
+async function viewTriggers(id, name) {
+  const data = await api('/v1/honey-tokens/'+id+'/triggers');
+  const triggers = Array.isArray(data) ? data : [];
+  document.getElementById('triggers-modal-title').textContent = 'Triggers: ' + name;
+  if (!triggers.length) {
+    document.getElementById('triggers-modal-body').innerHTML = '<div class="empty">No triggers recorded yet.</div>';
+  } else {
+    document.getElementById('triggers-modal-body').innerHTML = `
+      <table class="tbl">
+        <thead><tr><th>Time</th><th>Event ID</th><th>Module</th><th>Tenant</th><th>User</th></tr></thead>
+        <tbody>${triggers.map(t => `<tr>
+          <td>${t.timestamp ? new Date(t.timestamp).toLocaleString() : '—'}</td>
+          <td style="font-family:monospace;font-size:11px">${t.event_id||'—'}</td>
+          <td><span class="mod-chip ${t.module}">${t.module||'—'}</span></td>
+          <td>${t.tenant_id||'—'}</td>
+          <td>${t.user_id||'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  }
+  openModal('modal-triggers');
+}
+
+// ════════════════════════════════════════════════════════ DEMO ══
+async function loadScenarios() {
+  const [scenData, activeData] = await Promise.all([
+    api('/v1/demo/scenarios'),
+    api('/v1/demo/active'),
+  ]);
+  const scenarios = Array.isArray(scenData) ? scenData : [];
+  const active = activeData?.active || [];
+  const el = document.getElementById('scenarios-list');
+  if (!scenarios.length) { el.innerHTML = '<div class="empty">No scenarios available.</div>'; return; }
+  el.innerHTML = scenarios.map(s => {
+    const running = active.includes(s.name);
+    return `<div class="scenario-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="scenario-name">${s.name}</div>
+        ${running ? '<span class="badge running">running</span>' : ''}
+      </div>
+      <div class="scenario-desc">${s.description}</div>
+      <div class="btn-group">
+        <button class="btn btn-sm" onclick="replay('${s.name}',1)">▶ 1x</button>
+        <button class="btn btn-sm" onclick="replay('${s.name}',5)">▶ 5x</button>
+        <button class="btn btn-sm" onclick="showScenario('${s.name}')">Detail</button>
+        ${running ? `<button class="btn btn-sm danger" onclick="stopScenario('${s.name}')">⏹ Stop</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function replay(name, spd) {
+  await api('/v1/demo/replay', 'POST', { name, speed: spd });
+  toast('Replaying "'+name+'" at '+spd+'x', 'info');
+  setTimeout(loadScenarios, 300);
+}
+
+async function stopScenario(name) {
+  await api('/v1/demo/stop', 'POST', { name });
+  toast('Stopped "'+name+'"', 'info');
+  loadScenarios();
+}
+
+async function showScenario(name) {
+  const sc = await api('/v1/demo/scenarios/'+name);
+  if (!sc) return;
+  document.getElementById('sc-modal-title').textContent = sc.name;
+  document.getElementById('sc-modal-meta').textContent =
+    `${sc.description || ''} · ${(sc.events||[]).length} events · ${(sc.annotations||[]).length} annotations`;
+
+  const anns = sc.annotations || [];
+  const annHtml = anns.length ? `
+    <div class="section-label" style="margin-bottom:6px">Annotations (${anns.length})</div>
+    ${anns.map(a => `<div class="annotation-row ${a.style||''}">
+      <div class="ann-offset">+${a.offset_ms}ms</div>
+      <div class="ann-text">${a.text}</div>
+    </div>`).join('')}
+    <div style="margin-bottom:12px"></div>` : '';
+
+  const events = sc.events || [];
+  const evHtml = events.length ? `
+    <div class="section-label">Events (${events.length})</div>
+    <table class="tbl">
+      <thead><tr><th>Offset (ms)</th><th>Module</th><th>Type</th><th>Severity</th><th>Status</th></tr></thead>
+      <tbody>${events.map(e => `<tr>
+        <td>+${e.offset_ms}</td>
+        <td><span class="mod-chip ${e.event?.module||''}">${e.event?.module||'?'}</span></td>
+        <td>${e.event?.event_type||'?'}</td>
+        <td><span class="badge ${e.event?.severity||'info'}">${e.event?.severity||'info'}</span></td>
+        <td><span class="badge ${e.event?.status||''}">${e.event?.status||'—'}</span></td>
+      </tr>`).join('')}</tbody>
+    </table>` : '<div class="empty">No events in scenario.</div>';
+
+  document.getElementById('sc-modal-body').innerHTML = annsHtml + evHtml;
+
+  function annsHtml() { return annHtml; }
+  document.getElementById('sc-modal-body').innerHTML = annHtml + evHtml;
+  openModal('modal-scenario');
+}
+
+async function checkRecStatus() {
+  const data = await api('/v1/demo/record/status');
+  if (!data) return;
+  setRecUI(data.state === 'active');
+  if (data.state === 'active') {
+    recEvCount = data.event_count || 0;
+    const el = document.getElementById('rec-ev-count');
+    if (el) el.textContent = recEvCount + ' events captured';
+  }
+}
+
+async function startRecording() {
+  const name = document.getElementById('rec-name').value.trim();
+  if (!name) { toast('Scenario name is required', 'error'); return; }
+  const desc = document.getElementById('rec-desc').value.trim();
+  const r = await apiRaw('/v1/demo/record/start', 'POST', { name, description: desc });
+  if (r.ok) {
+    recActive = true; recEvCount = 0;
+    setRecUI(true);
+    document.getElementById('hd-rec-pill').style.display = '';
+    toast('Recording started', 'info');
+  } else {
+    toast('Could not start recording (already active?)', 'error');
+  }
+}
+
+async function stopRecording() {
+  const r = await apiRaw('/v1/demo/record/stop', 'POST', {});
+  if (r.ok) {
+    const data = await r.json();
+    recActive = false;
+    setRecUI(false);
+    document.getElementById('hd-rec-pill').style.display = 'none';
+    toast('Recording saved: ' + (data.scenario?.name || '?'), 'info');
+    loadScenarios();
+  } else {
+    toast('Failed to stop recording', 'error');
+  }
+}
+
+function setRecUI(active) {
+  recActive = active;
+  document.getElementById('rec-idle-ui').style.display = active ? 'none' : '';
+  document.getElementById('rec-active-ui').style.display = active ? '' : 'none';
+  const badge = document.getElementById('rec-status-badge');
+  badge.innerHTML = active ? '<span class="badge open">recording</span>' : '<span class="badge resolved">idle</span>';
+}
+
+// ══════════════════════════════════════════════════ SETTINGS ══
+async function loadHealth() {
+  const data = await api('/v1/health');
+  const el = document.getElementById('health-body');
+  if (!data) { el.innerHTML = '<div class="empty">Could not reach server.</div>'; return; }
+  el.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+      <div><span style="color:var(--muted)">Status:</span> <span class="badge ${data.status==='ok'?'healthy':'error'}">${data.status}</span></div>
+      ${data.version ? `<div><span style="color:var(--muted)">Version:</span> ${data.version}</div>` : ''}
+      ${data.uptime ? `<div><span style="color:var(--muted)">Uptime:</span> ${data.uptime}</div>` : ''}
+      ${data.event_count !== undefined ? `<div><span style="color:var(--muted)">Events stored:</span> ${data.event_count}</div>` : ''}
+    </div>`;
+}
+
+function saveCfgFilter() {
+  const module = document.getElementById('cfg-f-module').value.trim();
+  const severity = document.getElementById('cfg-f-severity').value;
+  const tenant = document.getElementById('cfg-f-tenant').value.trim();
+  // Sync to live page inputs
+  const m = document.getElementById('ws-f-module'); if(m) m.value = module;
+  const s = document.getElementById('ws-f-severity'); if(s) s.value = severity;
+  const t = document.getElementById('ws-f-tenant'); if(t) t.value = tenant;
+  sendWS({ type: 'set_filter', module, severity, tenant_id: tenant });
+  const parts = [module&&'module:'+module, severity&&'sev:'+severity, tenant&&'tenant:'+tenant].filter(Boolean);
+  document.getElementById('cfg-filter-display').textContent = parts.join(', ') || 'none';
+  toast('WS filter applied', 'info');
+}
+
+function clearCfgFilter() {
+  ['cfg-f-module','cfg-f-tenant'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  const sel = document.getElementById('cfg-f-severity'); if(sel) sel.value='';
+  sendWS({ type:'set_filter', module:'', severity:'', tenant_id:'' });
+  document.getElementById('cfg-filter-display').textContent = 'none';
+  toast('WS filter cleared', 'info');
+}
+
+// ══════════════════════════════════════════════ API HELPERS ══
+async function api(url, method, body) {
+  try {
+    const opts = { method: method||'GET', headers: {'Content-Type':'application/json'} };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    if (!r.ok) return null;
+    return r.json().catch(() => null);
+  } catch { return null; }
+}
+
+async function apiRaw(url, method, body) {
+  const opts = { method: method||'POST', headers: {'Content-Type':'application/json'} };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  return fetch(url, opts).catch(() => ({ ok: false }));
+}
+
+// ══════════════════════════════════════════════════ MODALS ══
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeOnBackdrop(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+// ══════════════════════════════════════════════════ TOAST ══
+function toast(msg, type = 'info') {
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ══════════════════════════════════════════════════ RUN BOOKS ══
+let allRunBooks = [];
+
+async function loadRunBooks() {
+  const data = await api('/v1/runbooks');
+  allRunBooks = Array.isArray(data) ? data : [];
+  renderRunBooks(allRunBooks);
+}
+
+function renderRunBooks(books) {
+  const el = document.getElementById('runbooks-list');
+  if (!el) return;
+  if (!books.length) { el.innerHTML = '<div class="empty">No run books found.</div>'; return; }
+  const catColor = { security:'var(--red)', operations:'var(--blue)', reliability:'var(--yellow)' };
+  el.innerHTML = books.map(rb => `
+    <div class="scenario-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="scenario-name">${rb.name}</div>
+          <div class="scenario-desc">${rb.description}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+            <span class="badge" style="background:rgba(0,0,0,.2);color:${catColor[rb.category]||'var(--muted)'};">${rb.category}</span>
+            <span class="badge ${rb.severity}">${rb.severity}</span>
+            <span style="font-size:10px;color:var(--muted);align-self:center">~${rb.estimated_minutes} min</span>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="showRunBook('${rb.id}')">View Steps</button>
+      </div>
+    </div>`).join('');
+}
+
+function filterRunBooks() {
+  const q = document.getElementById('rb-filter')?.value.toLowerCase() || '';
+  if (!q) { renderRunBooks(allRunBooks); return; }
+  renderRunBooks(allRunBooks.filter(rb =>
+    rb.name.toLowerCase().includes(q) ||
+    rb.triggers.some(t => t.toLowerCase().includes(q)) ||
+    rb.category.toLowerCase().includes(q)
+  ));
+}
+
+async function showRunBook(id) {
+  const rb = await api('/v1/runbooks/'+id);
+  if (!rb) return;
+  document.getElementById('rb-modal-title').textContent = rb.name;
+  document.getElementById('rb-modal-meta').textContent =
+    `${rb.category} · ${rb.severity} · ~${rb.estimated_minutes} min · Triggers: ${rb.triggers.join(', ')}`;
+  const actionIcon = { check:'🔍', command:'💻', notify:'📢', containment:'🛡', escalate:'🚨' };
+  document.getElementById('rb-modal-body').innerHTML = rb.steps.map(s => `
+    <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="min-width:28px;height:28px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0">${s.order}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;margin-bottom:3px">${actionIcon[s.action]||'•'} ${s.title}</div>
+        <div style="font-size:12px;color:var(--muted)">${s.description}</div>
+        ${s.command ? `<div style="margin-top:6px;background:var(--bg);border-radius:4px;padding:5px 8px;font-family:monospace;font-size:11px;color:var(--green)">${s.command}</div>` : ''}
+      </div>
+    </div>`).join('');
+  openModal('modal-runbook');
+}
+
+// ════════════════════════════════════════════════ DEAD LETTER ══
+async function loadDeadLetters() {
+  const data = await api('/v1/dead-letter');
+  const entries = Array.isArray(data) ? data : [];
+  const el = document.getElementById('dead-letter-list');
+  if (!el) return;
+  if (!entries.length) { el.innerHTML = '<div class="empty">Dead letter queue is empty — all events are passing validation.</div>'; return; }
+  el.innerHTML = entries.map(e => {
+    const raw = e.raw || {};
+    return `<div class="alert-card error" style="margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between">
+        <div class="alert-title">${e.reason}</div>
+        <span style="font-size:11px;color:var(--muted)">${new Date(e.received_at).toLocaleString()}</span>
+      </div>
+      <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-top:6px;background:var(--bg);padding:6px;border-radius:4px;white-space:pre-wrap;word-break:break-all">${JSON.stringify(raw,null,2).substring(0,300)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════ AUDIT VERIFY ══
+async function runAuditVerify() {
+  const el = document.getElementById('audit-verify-body');
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px">Verifying…</div>';
+  const result = await api('/v1/audit/verify?limit=500');
+  if (!result) { el.innerHTML = '<div class="empty">Could not reach server.</div>'; return; }
+  const tampered = result.tampered || [];
+  const pctValid = result.total > 0 ? Math.round((result.valid / result.total) * 100) : 0;
+  const statusColor = tampered.length > 0 ? 'var(--red)' : result.unsigned > 0 ? 'var(--yellow)' : 'var(--green)';
+  const statusMsg = tampered.length > 0 ? 'TAMPERED EVENTS DETECTED' : result.unsigned > 0 ? 'Unsigned events present' : 'All signatures valid';
+  el.innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+      <div class="stat-card" style="flex:1;min-width:80px"><div class="val" style="font-size:22px">${result.total}</div><div class="lbl">Total</div></div>
+      <div class="stat-card" style="flex:1;min-width:80px"><div class="val" style="font-size:22px;color:var(--green)">${result.valid}</div><div class="lbl">Valid</div></div>
+      <div class="stat-card" style="flex:1;min-width:80px"><div class="val" style="font-size:22px;color:var(--yellow)">${result.unsigned}</div><div class="lbl">Unsigned</div></div>
+      <div class="stat-card" style="flex:1;min-width:80px"><div class="val" style="font-size:22px;color:var(--red)">${result.invalid}</div><div class="lbl">Tampered</div></div>
+    </div>
+    <div style="font-size:13px;font-weight:600;color:${statusColor};margin-bottom:6px">${statusMsg}</div>
+    ${tampered.length ? `<div style="font-size:11px;color:var(--muted)">Tampered event IDs: ${tampered.join(', ')}</div>` : ''}
+    <div style="margin-top:8px;font-size:11px;color:var(--muted)">Integrity: ${pctValid}% of stored events have a valid HMAC-SHA256 seal. Unsigned events were ingested before signing was enabled.</div>`;
+}
+
+// ══════════════════════════════════════════════════ POLLING ══
+setInterval(refreshTopo, 12000);
+setInterval(refreshPipeline, 6000);
+setInterval(() => { if (currentPage==='security') { loadAlerts(); loadIncidents(); } }, 20000);
+setInterval(() => { if (currentPage==='honey') loadHoney(); }, 30000);
+setInterval(() => { if (currentPage==='demo') { loadScenarios(); checkRecStatus(); } }, 10000);
+
+// ══════════════════════════════════════════════════ INIT ══
+(function init() {
+  const page = location.pathname.replace(/^\//, '') || 'dashboard';
+  const validPages = ['dashboard','live','traces','security','audit','honey','demo','settings'];
+  currentPage = validPages.includes(page) ? page : 'dashboard';
+  history.replaceState({ page: currentPage }, '', '/' + currentPage);
+  activatePage(currentPage);
+  connectWS();
+})();
+</script>
+</body>
+</html>

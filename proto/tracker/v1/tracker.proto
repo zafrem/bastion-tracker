@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package bastion.tracker.v1;
+
+option go_package = "github.com/bastion/tracker/gen/tracker/v1;trackerv1";
+
+// TrackerService is the gRPC interface for Bastion-Tracker.
+// The implementation uses a JSON codec (codec.go), so field numbers
+// are for documentation only — JSON keys follow Go struct tags.
+service TrackerService {
+  rpc SubmitEvent(BastionEvent)            returns (SubmitResponse);
+  rpc SubmitBatchEvents(BatchEventRequest) returns (BatchResponse);
+  rpc QueryEvents(QueryRequest)            returns (EventsResponse);
+  rpc GetTrace(TraceRequest)               returns (TraceResponse);
+  rpc Health(HealthRequest)                returns (HealthResponse);
+
+  // StreamEvents streams BastionEvents matching the filter to the client.
+  // The client sends one StreamEventsRequest; the server pushes events until
+  // the client disconnects.
+  rpc StreamEvents(StreamEventsRequest) returns (stream BastionEvent);
+}
+
+message BastionEvent {
+  string event_id        = 1;
+  string trace_id        = 2;
+  string span_id         = 3;
+  string parent_span_id  = 4;
+  string module          = 5;   // sentinel, vault, navigator, anchor
+  string event_type      = 6;
+  string severity        = 7;   // info, warning, error, critical
+  int64  timestamp_unix  = 8;
+  string tenant_id       = 9;
+  string user_id         = 10;
+  string request_id      = 11;
+  map<string, string> labels = 12;
+  string pipeline_type   = 13;  // full, lite, minimal, custom
+  repeated string modules_used    = 14;
+  repeated string modules_skipped = 15;
+  int64  duration_ms     = 16;
+  string status          = 17;  // passed, blocked, error
+  string action_taken    = 18;
+  // data carries event-specific structured payload (JSON-encoded map).
+  // In the JSON codec this is transmitted as a nested JSON object.
+  bytes  data_json       = 19;
+}
+
+// StreamEventsRequest specifies optional filters for StreamEvents.
+message StreamEventsRequest {
+  string module    = 1; // optional — filter by module
+  string severity  = 2; // optional — filter by severity
+  string tenant_id = 3; // optional — filter by tenant
+}
+
+message SubmitResponse {
+  string event_id = 1;
+  bool   accepted = 2;
+}
+
+message BatchEventRequest {
+  repeated BastionEvent events = 1;
+}
+
+message BatchResponse {
+  int32 accepted = 1;
+  int32 rejected = 2;
+}
+
+message QueryRequest {
+  string trace_id  = 1;
+  string user_id   = 2;
+  string tenant_id = 3;
+  string module    = 4;
+  string severity  = 5;
+  string status    = 6;
+  int64  since     = 7;  // Unix seconds
+  int32  limit     = 8;
+}
+
+message EventsResponse {
+  repeated BastionEvent events = 1;
+  int32 total = 2;
+}
+
+message TraceRequest  { string trace_id = 1; }
+message TraceResponse { Trace trace     = 1; }
+
+message Trace {
+  string trace_id        = 1;
+  string request_id      = 2;
+  string tenant_id       = 3;
+  string user_id         = 4;
+  string pipeline_type   = 5;
+  int64  start_unix      = 6;
+  int64  total_ms        = 7;
+  string status          = 8;
+  repeated Span spans            = 9;
+  repeated string modules_used    = 10;
+  repeated string modules_skipped = 11;
+}
+
+message Span {
+  string span_id     = 1;
+  string module      = 2;
+  string event_type  = 3;
+  int64  start_unix  = 4;
+  int64  duration_ms = 5;
+  string status      = 6;
+}
+
+message HealthRequest  {}
+message HealthResponse {
+  string status  = 1;
+  string version = 2;
+  map<string, string> checks = 3;
+}

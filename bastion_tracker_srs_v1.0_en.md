@@ -238,9 +238,10 @@ Any combination based on:
 
 ### 2.4 Constraints
 
-- **Language:** Go (backend) + TypeScript/React (frontend)
+- **Language:** Go (backend) + HTML5/SVG/Vanilla JS (PoC UI) / TypeScript/React (Target UI)
 - **Message Queue:** NATS (lightweight, fits SMB)
-- **Storage:** PostgreSQL + Prometheus + Loki + Jaeger
+- **Storage (PoC):** In-memory Ring Buffer (10,000 events)
+- **Storage (Target):** PostgreSQL + Prometheus + Loki + Jaeger
 - **Memory:** 8GB per pod (backend), 2GB (frontend)
 - **Real-time:** WebSocket for live updates
 - **Browser Support:** Chrome 100+, Firefox 100+, Safari 16+

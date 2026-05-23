@@ -1,0 +1,57 @@
+version: "1.0"
+
+server:
+  rest_port: 8080
+  grpc_port: 9090
+  websocket_port: 8081
+  ui_port: 3000
+
+nats:
+  url: nats://nats:4222
+  subjects:
+    - "bastion.events.>"
+  max_pending: 100000
+
+storage:
+  postgresql_url: ""          # empty = in-memory (PoC mode)
+  retention_days: 30
+  max_events_memory: 10000
+
+realtime:
+  max_connections: 1000
+  heartbeat_interval: 30s
+  buffer_size: 256
+
+alerting:
+  enabled: true
+  rules:
+    - name: honey_token_triggered
+      condition: "security.honey_token_triggered"
+      severity: critical
+    - name: prompt_injection_detected
+      condition: "sentinel.prompt_injection_detected"
+      severity: warning
+    - name: cross_tenant_attempt
+      condition: "vault.cross_tenant_attempt"
+      severity: warning
+    - name: module_degraded
+      condition: "system.module_degraded"
+      severity: warning
+
+demo:
+  enabled: true
+  scenarios_path: ./scenarios
+  default_speed: 1.0
+
+pipelines:
+  full:    [sentinel, vault, navigator, anchor, llm]
+  lite:    [sentinel, navigator, anchor, llm]
+  minimal: [sentinel, navigator, llm]
+
+logging:
+  level: info
+  format: json
+
+metrics:
+  enabled: true
+  port: 9091
