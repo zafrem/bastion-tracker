@@ -3,6 +3,7 @@ package honeytoken
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bastion/tracker/internal/metrics"
@@ -51,19 +52,35 @@ func (m *Manager) Triggers(tokenID string) []models.HoneyTokenTrigger {
 	return m.store.TokenTriggers(tokenID)
 }
 
+// AllTriggers returns all trigger records across every honey-token.
+func (m *Manager) AllTriggers() []models.HoneyTokenTrigger {
+	return m.store.AllTriggers()
+}
+
+// detectionEventTypes are the honey-token event types emitted by all modules
+// that indicate an active detection (not lifecycle management events).
+var detectionEventTypes = map[string]bool{
+	"honey_token_triggered":   true, // legacy / generic
+	"honey_token_accessed":    true, // Vault: data-layer
+	"honey_token_retrieved":   true, // Navigator: search-layer
+	"honey_token_referenced":  true, // Sentinel: input-layer
+	"honey_token_leaked":      true, // Sentinel: output-layer
+}
+
 // CheckEvent examines an event for honey-token triggers and records them.
 // Returns the token ID if a trigger was detected.
 func (m *Manager) CheckEvent(ev models.BastionEvent) string {
-	if ev.EventType != "honey_token_triggered" {
+	if !detectionEventTypes[ev.EventType] && !strings.HasPrefix(ev.EventType, "honey_token_") {
 		return ""
 	}
-	tokenIDRaw, ok := ev.Data["token_id"]
-	if !ok {
-		return ""
-	}
-	tokenID, _ := tokenIDRaw.(string)
+
+	// Modules publish honey_token_id; legacy events may use token_id.
+	tokenID, _ := ev.Data["honey_token_id"].(string)
 	if tokenID == "" {
-		return ""
+		tokenID, _ = ev.Data["token_id"].(string)
+	}
+	if tokenID == "" {
+		tokenID = "unknown"
 	}
 
 	trig := models.HoneyTokenTrigger{

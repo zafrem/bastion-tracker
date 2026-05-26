@@ -15,6 +15,7 @@ import (
 	"github.com/bastion/tracker/internal/auth"
 	"github.com/bastion/tracker/internal/config"
 	"github.com/bastion/tracker/internal/demo"
+	"github.com/bastion/tracker/internal/events"
 	"github.com/bastion/tracker/internal/honeytoken"
 	"github.com/bastion/tracker/internal/hub"
 	"github.com/bastion/tracker/internal/incidents"
@@ -177,6 +178,16 @@ func (h *handlers) ListTraces(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, models.TracesResponse{Traces: traces, Total: len(traces)})
 }
 
+// ListTracesByUser returns all traces for a given user — supports the lineage
+// "user activity" query (SRS doc 22 §6.1 query type 3).
+func (h *handlers) ListTracesByUser(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "user_id")
+	limit := intParam(r, "limit", 50)
+	q := models.QueryRequest{UserID: userID}
+	traces := h.store.RecentTraces(q, limit)
+	writeJSON(w, 200, models.TracesResponse{Traces: traces, Total: len(traces)})
+}
+
 func (h *handlers) GetTrace(w http.ResponseWriter, r *http.Request) {
 	traceID := chi.URLParam(r, "trace_id")
 	tr, ok := h.store.GetTrace(traceID)
@@ -185,6 +196,53 @@ func (h *handlers) GetTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, tr)
+}
+
+// LineageByDataRef returns all traces that touched a specific data element
+// (SRS doc 22 §6.2: GET /v1/lineage/data/{data_ref}).
+func (h *handlers) LineageByDataRef(w http.ResponseWriter, r *http.Request) {
+	dataRef := chi.URLParam(r, "data_ref")
+	limit := intParam(r, "limit", 50)
+	// Search events whose metadata/data contains the data_ref as a value.
+	evts := h.store.SearchEvents(dataRef, limit)
+	traceIDs := make(map[string]struct{})
+	for _, ev := range evts {
+		if ev.TraceID != "" {
+			traceIDs[ev.TraceID] = struct{}{}
+		}
+	}
+	var traces []models.Trace
+	for traceID := range traceIDs {
+		if tr, ok := h.store.GetTrace(traceID); ok {
+			traces = append(traces, *tr)
+		}
+	}
+	if pub := h.proc.Publisher(); pub != nil {
+		pub.Publish(events.EventLineageCompleted("", "data_ref", r.URL.Query().Get("tenant_id"), len(traces)))
+	}
+	writeJSON(w, 200, models.TracesResponse{Traces: traces, Total: len(traces)})
+}
+
+// LineageAudit returns events in a time range for compliance audit
+// (SRS doc 22 §6.2: GET /v1/lineage/audit?from=&to=).
+func (h *handlers) LineageAudit(w http.ResponseWriter, r *http.Request) {
+	limit := intParam(r, "limit", 200)
+	q := models.QueryRequest{TenantID: r.URL.Query().Get("tenant_id")}
+	if from := r.URL.Query().Get("from"); from != "" {
+		if t, err := time.Parse(time.RFC3339, from); err == nil {
+			q.Since = t
+		}
+	}
+	if to := r.URL.Query().Get("to"); to != "" {
+		if t, err := time.Parse(time.RFC3339, to); err == nil {
+			q.Until = t
+		}
+	}
+	evts := h.store.RecentEvents(q, limit)
+	if pub := h.proc.Publisher(); pub != nil {
+		pub.Publish(events.EventLineageCompleted("", "audit", q.TenantID, len(evts)))
+	}
+	writeJSON(w, 200, models.EventsResponse{Events: evts, Total: len(evts)})
 }
 
 // GetTraceTimeline returns spans positioned on a timeline, ready for visualization.
@@ -322,6 +380,10 @@ func (h *handlers) DeleteHoneyToken(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) HoneyTokenTriggers(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	writeJSON(w, 200, h.honey.Triggers(id))
+}
+
+func (h *handlers) AllHoneyTokenTriggers(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, h.honey.AllTriggers())
 }
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ package incidents
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bastion/tracker/internal/metrics"
@@ -21,17 +22,40 @@ func New(s *store.Store) *Manager {
 	return &Manager{store: s}
 }
 
+// honeyTokenTitle returns a human-readable incident title for a honey-token event type.
+func honeyTokenTitle(ev models.BastionEvent) string {
+	tokenID, _ := ev.Data["honey_token_id"].(string)
+	if tokenID == "" {
+		tokenID, _ = ev.Data["token_id"].(string)
+	}
+	layer := map[string]string{
+		"honey_token_triggered":  "triggered",
+		"honey_token_accessed":   "data-layer access (Vault)",
+		"honey_token_retrieved":  "search-layer retrieval (Navigator)",
+		"honey_token_referenced": "input-layer reference (Sentinel)",
+		"honey_token_leaked":     "output-layer leak (Sentinel)",
+	}
+	lbl := layer[ev.EventType]
+	if lbl == "" {
+		lbl = ev.EventType
+	}
+	if tokenID != "" {
+		return fmt.Sprintf("Honey-token %s: %s", lbl, tokenID)
+	}
+	return fmt.Sprintf("Honey-token %s", lbl)
+}
+
 // AutoCreate inspects an event and creates an incident if it warrants one.
 func (m *Manager) AutoCreate(ev models.BastionEvent) *models.Incident {
 	var title, desc string
-	switch ev.EventType {
-	case "honey_token_triggered":
-		title = fmt.Sprintf("Honey-token triggered: %v", ev.Data["token_id"])
-		desc = "A honey-token was accessed — potential intrusion detected."
-	case "prompt_injection_detected":
+	switch {
+	case strings.HasPrefix(ev.EventType, "honey_token_"):
+		title = honeyTokenTitle(ev)
+		desc = fmt.Sprintf("Honey-token detection at %s layer — potential intrusion (module: %s).", ev.EventType, ev.Module)
+	case ev.EventType == "prompt_injection_detected":
 		title = "Prompt injection attempt detected"
 		desc = fmt.Sprintf("Sentinel blocked a prompt injection from user %s.", ev.UserID)
-	case "cross_tenant_attempt":
+	case ev.EventType == "cross_tenant_attempt":
 		title = "Cross-tenant access attempt"
 		desc = fmt.Sprintf("User %s attempted to access another tenant's data.", ev.UserID)
 	default:
@@ -39,7 +63,7 @@ func (m *Manager) AutoCreate(ev models.BastionEvent) *models.Incident {
 	}
 
 	if ev.Severity != "critical" && ev.Severity != "error" {
-		if ev.EventType != "honey_token_triggered" {
+		if !strings.HasPrefix(ev.EventType, "honey_token_") {
 			return nil
 		}
 	}

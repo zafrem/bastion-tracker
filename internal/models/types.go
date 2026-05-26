@@ -1,32 +1,78 @@
 // Package models defines the shared domain types for Bastion-Tracker.
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // ─── Event schema ─────────────────────────────────────────────────────────────
 
 // BastionEvent is the canonical event emitted by every Bastion module.
+// Timestamp is stored as time.Time internally; the JSON decoder handles both
+// int64 UnixNano (emitted by all module publishers) and RFC3339 strings.
 type BastionEvent struct {
 	EventID        string            `json:"event_id"`
+	SchemaVersion  string            `json:"schema_version,omitempty"`
 	TraceID        string            `json:"trace_id"`
 	SpanID         string            `json:"span_id"`
 	ParentSpanID   string            `json:"parent_span_id"`
-	Module         string            `json:"module"`          // sentinel, vault, navigator, anchor
+	Module         string            `json:"module"`           // sentinel, vault, navigator, anchor
+	ModuleVersion  string            `json:"module_version,omitempty"`
 	EventType      string            `json:"event_type"`
-	Severity       string            `json:"severity"`        // info, warning, error, critical
-	Timestamp      time.Time         `json:"timestamp"`
+	Severity       string            `json:"severity"`         // info, warning, error, critical
+	Category       string            `json:"category,omitempty"` // operational, security, performance, audit
+	Timestamp      time.Time         `json:"-"`                // populated by UnmarshalJSON
 	TenantID       string            `json:"tenant_id"`
 	UserID         string            `json:"user_id"`
 	RequestID      string            `json:"request_id"`
 	Labels         map[string]string `json:"labels,omitempty"`
 	Data           map[string]any    `json:"data,omitempty"`
-	PipelineType   string            `json:"pipeline_type"`   // full, lite, minimal, custom
+	PipelineType   string            `json:"pipeline_type"`    // full, lite, minimal, custom
 	ModulesUsed    []string          `json:"modules_used,omitempty"`
 	ModulesSkipped []string          `json:"modules_skipped,omitempty"`
 	DurationMs     int64             `json:"duration_ms"`
-	Status         string            `json:"status"`          // passed, blocked, error
+	Status         string            `json:"status"`           // passed, blocked, error
 	ActionTaken    string            `json:"action_taken,omitempty"`
 	Signature      string            `json:"signature,omitempty"` // HMAC-SHA256 audit integrity seal
+}
+
+// UnmarshalJSON handles the Foundation schema's int64 UnixNano timestamp as
+// well as RFC3339 strings from legacy sources.
+func (e *BastionEvent) UnmarshalJSON(data []byte) error {
+	type Alias BastionEvent
+	aux := &struct {
+		Timestamp interface{} `json:"timestamp"`
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	switch v := aux.Timestamp.(type) {
+	case float64:
+		e.Timestamp = time.Unix(0, int64(v))
+	case string:
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			e.Timestamp = t
+		} else if t, err := time.Parse(time.RFC3339, v); err == nil {
+			e.Timestamp = t
+		}
+	}
+	return nil
+}
+
+// MarshalJSON emits Timestamp as int64 UnixNano to stay consistent with module publishers.
+func (e BastionEvent) MarshalJSON() ([]byte, error) {
+	type Alias BastionEvent
+	return json.Marshal(&struct {
+		Timestamp int64 `json:"timestamp"`
+		Alias
+	}{
+		Timestamp: e.Timestamp.UnixNano(),
+		Alias:     (Alias)(e),
+	})
 }
 
 // ─── Traces ───────────────────────────────────────────────────────────────────
@@ -311,6 +357,7 @@ type QueryRequest struct {
 	Severity string    `json:"severity,omitempty"`
 	Status   string    `json:"status,omitempty"`
 	Since    time.Time `json:"since,omitempty"`
+	Until    time.Time `json:"until,omitempty"`
 	Limit    int       `json:"limit,omitempty"`
 }
 

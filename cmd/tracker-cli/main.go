@@ -20,6 +20,7 @@ import (
 	"github.com/bastion/tracker/internal/collector"
 	"github.com/bastion/tracker/internal/config"
 	"github.com/bastion/tracker/internal/demo"
+	"github.com/bastion/tracker/internal/events"
 	"github.com/bastion/tracker/internal/honeytoken"
 	"github.com/bastion/tracker/internal/hub"
 	"github.com/bastion/tracker/internal/incidents"
@@ -138,6 +139,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 			natsCollector = nc
 			log.Println("[nats] connected")
 		}
+		// Tracker also publishes its own events (incident_created, honey_token_alert, lineage_completed).
+		pub := events.New(cfg.NATS.URL)
+		proc.SetPublisher(pub)
 	}
 
 	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, cfg.Server.RESTPort)

@@ -21,7 +21,7 @@ Tracker acts as the "control center" for the entire RAG pipeline, allowing opera
 
 ## Getting Started
 ### Prerequisites
-- Go 1.21+
+- Go 1.26.2+
 - Node.js & NPM (for Frontend)
 - NATS Server
 - PostgreSQL

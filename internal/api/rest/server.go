@@ -123,6 +123,12 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 		r.Get("/v1/traces/{trace_id}", h.GetTrace)
 		r.Get("/v1/traces/{trace_id}/timeline", h.GetTraceTimeline)
 
+		// Lineage — aliases + new query endpoints (SRS doc 22 §6.2)
+		r.Get("/v1/lineage/{trace_id}", h.GetTrace)
+		r.Get("/v1/lineage/user/{user_id}", h.ListTracesByUser)
+		r.Get("/v1/lineage/data/{data_ref}", h.LineageByDataRef)
+		r.Get("/v1/lineage/audit", h.LineageAudit)
+
 		// Topology — viewer+
 		r.Get("/v1/topology", h.Topology)
 		r.Get("/v1/topology/health", h.TopologyHealth)
@@ -143,6 +149,7 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 		r.Get("/v1/honey-tokens", h.ListHoneyTokens)
 		r.With(operatorOrOpen(authCfg)).Post("/v1/honey-tokens", h.CreateHoneyToken)
 		r.With(operatorOrOpen(authCfg)).Delete("/v1/honey-tokens/{id}", h.DeleteHoneyToken)
+		r.Get("/v1/honey-tokens/triggers", h.AllHoneyTokenTriggers) // SRS: all triggers across tokens
 		r.Get("/v1/honey-tokens/{id}/triggers", h.HoneyTokenTriggers)
 
 		// Alerts — resolve

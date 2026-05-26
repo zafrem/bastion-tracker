@@ -121,6 +121,9 @@ func matchEvent(ev models.BastionEvent, q models.QueryRequest) bool {
 	if !q.Since.IsZero() && ev.Timestamp.Before(q.Since) {
 		return false
 	}
+	if !q.Until.IsZero() && ev.Timestamp.After(q.Until) {
+		return false
+	}
 	return true
 }
 
@@ -503,6 +506,16 @@ func (s *Store) TokenTriggers(tokenID string) []models.HoneyTokenTrigger {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]models.HoneyTokenTrigger{}, s.triggers[tokenID]...)
+}
+
+func (s *Store) AllTriggers() []models.HoneyTokenTrigger {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var all []models.HoneyTokenTrigger
+	for _, trigs := range s.triggers {
+		all = append(all, trigs...)
+	}
+	return all
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────

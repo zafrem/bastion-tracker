@@ -1590,8 +1590,10 @@ setInterval(() => { if (currentPage==='demo') { loadScenarios(); checkRecStatus(
 
 // ══════════════════════════════════════════════════ INIT ══
 (function init() {
-  const page = location.pathname.replace(/^\//, '') || 'dashboard';
+  let page = location.pathname.replace(/^\//, '') || 'dashboard';
   const validPages = ['dashboard','live','traces','security','audit','honey','demo','settings'];
+  // Alias: /flow → live (used in demo scripts)
+  if (page === 'flow') page = 'live';
   currentPage = validPages.includes(page) ? page : 'dashboard';
   history.replaceState({ page: currentPage }, '', '/' + currentPage);
   activatePage(currentPage);

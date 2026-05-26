@@ -27,7 +27,7 @@ func Root() *cobra.Command {
 		Short: "Bastion-Tracker CLI",
 	}
 	root.PersistentFlags().StringVar(&baseURL, "api", "http://localhost:8080", "Tracker API base URL")
-	root.AddCommand(serverCmd(), streamCmd(), tracesCmd(), traceCmd(), securityCmd(), demoCmd(), injectCmd(), generateCmd())
+	root.AddCommand(serverCmd(), streamCmd(), tracesCmd(), traceCmd(), securityCmd(), demoCmd(), injectCmd(), generateCmd(), lineageCmd())
 	return root
 }
 
@@ -172,6 +172,47 @@ func traceCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// ─── Lineage ──────────────────────────────────────────────────────────────────
+
+func lineageCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "lineage <trace_id|user:<user_id>|audit>",
+		Short: "Query data lineage (SRS doc 22)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			arg := args[0]
+			var path string
+			switch {
+			case len(arg) > 5 && arg[:5] == "user:":
+				path = "/v1/lineage/user/" + arg[5:]
+			case arg == "audit":
+				from, _ := cmd.Flags().GetString("from")
+				to, _ := cmd.Flags().GetString("to")
+				path = "/v1/lineage/audit"
+				sep := "?"
+				if from != "" {
+					path += sep + "from=" + from
+					sep = "&"
+				}
+				if to != "" {
+					path += sep + "to=" + to
+				}
+			default:
+				path = "/v1/lineage/" + arg
+			}
+			resp, err := apiGet(path)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(resp))
+			return nil
+		},
+	}
+	cmd.Flags().String("from", "", "RFC3339 start time for audit queries")
+	cmd.Flags().String("to", "", "RFC3339 end time for audit queries")
+	return cmd
 }
 
 // ─── Security ─────────────────────────────────────────────────────────────────
