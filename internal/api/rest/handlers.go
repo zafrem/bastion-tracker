@@ -20,6 +20,7 @@ import (
 	"github.com/bastion/tracker/internal/hub"
 	"github.com/bastion/tracker/internal/incidents"
 	"github.com/bastion/tracker/internal/models"
+	"github.com/bastion/tracker/internal/monitor"
 	"github.com/bastion/tracker/internal/processor"
 	"github.com/bastion/tracker/internal/runbook"
 	"github.com/bastion/tracker/internal/store"
@@ -36,7 +37,8 @@ type handlers struct {
 	authCfg   *config.AuthConfig
 	recorder  *demo.Recorder
 	runbooks  *runbook.Manager
-	signer    *audit.Signer // for audit verification endpoint
+	signer    *audit.Signer   // for audit verification endpoint
+	mon       *monitor.Manager // pipeline monitoring mode
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -583,6 +585,264 @@ func (h *handlers) VerifyAuditLog(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, result)
 }
+
+// ─── Monitor — mode control ───────────────────────────────────────────────────
+
+// MonitorGetMode returns the current monitoring mode and a summary of active sessions
+// and pending checkpoints, giving operators a quick overview before they change the mode.
+//
+// GET /v1/monitor/mode
+func (h *handlers) MonitorGetMode(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	mode := h.mon.GetMode()
+	pending := len(h.mon.ListCheckpoints(true))
+	active := 0
+	for _, s := range h.mon.ListSessions() {
+		if s.Status == "active" {
+			active++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode":               string(mode),
+		"active_sessions":    active,
+		"pending_checkpoints": pending,
+		"modes": map[string]string{
+			"off":     "Monitoring disabled. No overhead.",
+			"observe": "Non-blocking. Every pipeline request is captured step-by-step for review.",
+			"gate":    "Blocking. Each pipeline stage waits for operator approval before proceeding.",
+		},
+	})
+}
+
+// MonitorSetMode changes the monitoring mode at runtime.
+//
+// POST /v1/monitor/mode
+// Body: {"mode": "observe"|"gate"|"off", "reason": "optional human note"}
+func (h *handlers) MonitorSetMode(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	var body struct {
+		Mode   string `json:"mode"`
+		Reason string `json:"reason"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	var m monitor.Mode
+	switch body.Mode {
+	case "off":
+		m = monitor.ModeOff
+	case "observe":
+		m = monitor.ModeObserve
+	case "gate":
+		m = monitor.ModeGate
+	default:
+		writeError(w, http.StatusBadRequest,
+			`invalid mode — must be one of: "off", "observe", "gate"`)
+		return
+	}
+	prev := h.mon.GetMode()
+	h.mon.SetMode(m)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"previous_mode": string(prev),
+		"mode":          string(m),
+		"reason":        body.Reason,
+		"changed_at":    time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// ─── Monitor — sessions (observe + gate) ─────────────────────────────────────
+
+// MonitorListSessions returns all active and recently completed monitor sessions.
+//
+// GET /v1/monitor/sessions?status=active|completed
+func (h *handlers) MonitorListSessions(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	statusFilter := r.URL.Query().Get("status")
+	all := h.mon.ListSessions()
+	out := all[:0]
+	for _, s := range all {
+		if statusFilter == "" || s.Status == statusFilter {
+			out = append(out, s)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"sessions": out,
+		"total":    len(out),
+		"mode":     string(h.mon.GetMode()),
+	})
+}
+
+// MonitorGetSession returns the full step-by-step detail of one session.
+//
+// GET /v1/monitor/sessions/{session_id}
+func (h *handlers) MonitorGetSession(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	id := chi.URLParam(r, "session_id")
+	sess, ok := h.mon.GetSession(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, sess)
+}
+
+// MonitorDeleteSession removes a session from memory.
+//
+// DELETE /v1/monitor/sessions/{session_id}
+func (h *handlers) MonitorDeleteSession(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	id := chi.URLParam(r, "session_id")
+	if !h.mon.DeleteSession(id) {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// MonitorAnnotateStep appends a human note to a session step (observe mode).
+//
+// POST /v1/monitor/sessions/{session_id}/steps/{step_id}/annotate
+// Body: {"note": "This PII field was expected, customer consent on file."}
+func (h *handlers) MonitorAnnotateStep(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	sessionID := chi.URLParam(r, "session_id")
+	stepID := chi.URLParam(r, "step_id")
+	var body struct {
+		Note string `json:"note"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !h.mon.AnnotateStep(sessionID, stepID, body.Note) {
+		writeError(w, http.StatusNotFound, "session or step not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "annotated"})
+}
+
+// ─── Monitor — checkpoints (gate mode) ───────────────────────────────────────
+
+// MonitorListCheckpoints returns checkpoints, optionally filtered to pending only.
+//
+// GET /v1/monitor/checkpoints?pending=true
+func (h *handlers) MonitorListCheckpoints(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	pendingOnly := r.URL.Query().Get("pending") == "true"
+	cps := h.mon.ListCheckpoints(pendingOnly)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"checkpoints": cps,
+		"total":       len(cps),
+		"mode":        string(h.mon.GetMode()),
+	})
+}
+
+// MonitorGetCheckpoint returns one checkpoint by ID.
+//
+// GET /v1/monitor/checkpoints/{checkpoint_id}
+func (h *handlers) MonitorGetCheckpoint(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	cp, ok := h.mon.GetCheckpoint(chi.URLParam(r, "checkpoint_id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "checkpoint not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, cp)
+}
+
+// MonitorDecideCheckpoint approves or rejects a pending checkpoint (gate mode).
+// The pipeline module that created the checkpoint is unblocked immediately.
+//
+// POST /v1/monitor/checkpoints/{checkpoint_id}/decide
+// Body: {"decision": "approve"|"reject", "notes": "optional reason"}
+func (h *handlers) MonitorDecideCheckpoint(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	var body struct {
+		Decision string `json:"decision"`
+		Notes    string `json:"notes"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Decision != "approve" && body.Decision != "reject" {
+		writeError(w, http.StatusBadRequest, `decision must be "approve" or "reject"`)
+		return
+	}
+	// Derive operator identity from JWT claim (empty string when auth is off).
+	decidedBy, _ := r.Context().Value(ctxKeyUsername).(string)
+
+	cp, ok := h.mon.Decide(
+		chi.URLParam(r, "checkpoint_id"),
+		decidedBy,
+		body.Decision,
+		body.Notes,
+	)
+	if !ok {
+		writeError(w, http.StatusNotFound, "checkpoint not found or already decided")
+		return
+	}
+	writeJSON(w, http.StatusOK, cp)
+}
+
+// MonitorCreateCheckpoint is the endpoint pipeline modules call to register a
+// gate-mode checkpoint and receive a checkpoint_id.  The module then polls or
+// subscribes (WebSocket) and calls WaitForDecision internally before proceeding.
+//
+// POST /v1/monitor/checkpoints
+// Body: {"trace_id": "...", "tenant_id": "...", "stage": "sentinel-in", "request_data": {...}}
+func (h *handlers) MonitorCreateCheckpoint(w http.ResponseWriter, r *http.Request) {
+	if h.mon == nil {
+		writeError(w, http.StatusServiceUnavailable, "monitoring not available")
+		return
+	}
+	var body struct {
+		TraceID     string         `json:"trace_id"`
+		TenantID    string         `json:"tenant_id"`
+		Stage       string         `json:"stage"`
+		RequestData map[string]any `json:"request_data"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	cp := h.mon.CreateCheckpoint(body.TraceID, body.TenantID, body.Stage, body.RequestData)
+	if cp == nil {
+		writeError(w, http.StatusConflict,
+			"gate mode is not active — set monitor mode to 'gate' first")
+		return
+	}
+	writeJSON(w, http.StatusCreated, cp)
+}
+
+// ctxKeyUsername is the context key for the authenticated username (set by jwtMiddleware).
+type ctxKey string
+
+const ctxKeyUsername ctxKey = "username"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

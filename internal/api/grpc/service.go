@@ -12,8 +12,11 @@ import (
 type TrackerServiceServer interface {
 	SubmitEvent(context.Context, *models.BastionEvent) (*models.SubmitResponse, error)
 	SubmitBatchEvents(context.Context, *models.BatchEventRequest) (*models.BatchResponse, error)
-	QueryEvents(context.Context, *models.QueryRequest) (*models.EventsResponse, error)
+	// QueryEvents streams historical events matching the filter (server-streaming, SRS §6.2).
+	QueryEvents(*models.QueryRequest, grpc.ServerStream) error
 	GetTrace(context.Context, *models.TraceRequest) (*models.TraceResponse, error)
+	GetLineage(context.Context, *models.LineageRequest) (*models.LineageResponse, error)
+	GetIncidents(context.Context, *models.IncidentRequest) (*models.IncidentResponse, error)
 	Health(context.Context, *models.HealthRequest) (*models.HealthStatus, error)
 	StreamEvents(*models.StreamEventsRequest, grpc.ServerStream) error
 }
@@ -27,10 +30,16 @@ func (UnimplementedTrackerServiceServer) SubmitEvent(context.Context, *models.Ba
 func (UnimplementedTrackerServiceServer) SubmitBatchEvents(context.Context, *models.BatchEventRequest) (*models.BatchResponse, error) {
 	return nil, nil
 }
-func (UnimplementedTrackerServiceServer) QueryEvents(context.Context, *models.QueryRequest) (*models.EventsResponse, error) {
-	return nil, nil
+func (UnimplementedTrackerServiceServer) QueryEvents(*models.QueryRequest, grpc.ServerStream) error {
+	return nil
 }
 func (UnimplementedTrackerServiceServer) GetTrace(context.Context, *models.TraceRequest) (*models.TraceResponse, error) {
+	return nil, nil
+}
+func (UnimplementedTrackerServiceServer) GetLineage(context.Context, *models.LineageRequest) (*models.LineageResponse, error) {
+	return nil, nil
+}
+func (UnimplementedTrackerServiceServer) GetIncidents(context.Context, *models.IncidentRequest) (*models.IncidentResponse, error) {
 	return nil, nil
 }
 func (UnimplementedTrackerServiceServer) Health(context.Context, *models.HealthRequest) (*models.HealthStatus, error) {
@@ -51,11 +60,18 @@ var trackerServiceDesc = grpc.ServiceDesc{
 	Methods: []grpc.MethodDesc{
 		{MethodName: "SubmitEvent", Handler: submitEventHandler},
 		{MethodName: "SubmitBatchEvents", Handler: submitBatchHandler},
-		{MethodName: "QueryEvents", Handler: queryEventsHandler},
 		{MethodName: "GetTrace", Handler: getTraceHandler},
+		{MethodName: "GetLineage", Handler: getLineageHandler},
+		{MethodName: "GetIncidents", Handler: getIncidentsHandler},
 		{MethodName: "Health", Handler: healthHandler},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "QueryEvents",
+			Handler:       queryEventsHandler,
+			ServerStreams: true,
+			ClientStreams: false,
+		},
 		{
 			StreamName:    "StreamEvents",
 			Handler:       streamEventsHandler,
@@ -83,12 +99,12 @@ func submitBatchHandler(srv interface{}, ctx context.Context, dec func(interface
 	return srv.(TrackerServiceServer).SubmitBatchEvents(ctx, &req)
 }
 
-func queryEventsHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+func queryEventsHandler(srv interface{}, stream grpc.ServerStream) error {
 	var req models.QueryRequest
-	if err := dec(&req); err != nil {
-		return nil, err
+	if err := stream.RecvMsg(&req); err != nil {
+		return err
 	}
-	return srv.(TrackerServiceServer).QueryEvents(ctx, &req)
+	return srv.(TrackerServiceServer).QueryEvents(&req, stream)
 }
 
 func getTraceHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -97,6 +113,22 @@ func getTraceHandler(srv interface{}, ctx context.Context, dec func(interface{})
 		return nil, err
 	}
 	return srv.(TrackerServiceServer).GetTrace(ctx, &req)
+}
+
+func getLineageHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	var req models.LineageRequest
+	if err := dec(&req); err != nil {
+		return nil, err
+	}
+	return srv.(TrackerServiceServer).GetLineage(ctx, &req)
+}
+
+func getIncidentsHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	var req models.IncidentRequest
+	if err := dec(&req); err != nil {
+		return nil, err
+	}
+	return srv.(TrackerServiceServer).GetIncidents(ctx, &req)
 }
 
 func healthHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {

@@ -333,6 +333,33 @@ type LoginResponse struct {
 	Role      string `json:"role"`
 }
 
+// ─── Lineage ──────────────────────────────────────────────────────────────────
+
+// LineageRequest asks for the data-lineage graph for a single end-to-end request.
+type LineageRequest struct {
+	TraceID string `json:"trace_id"`
+}
+
+// LineageResponse carries the ordered span list representing the data journey.
+type LineageResponse struct {
+	TraceID string `json:"trace_id"`
+	Found   bool   `json:"found"`
+	Spans   []Span `json:"spans"`
+}
+
+// IncidentRequest queries incidents with optional filters.
+type IncidentRequest struct {
+	Status   string `json:"status,omitempty"`    // open, investigating, resolved
+	TenantID string `json:"tenant_id,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+// IncidentResponse carries a list of matching incidents.
+type IncidentResponse struct {
+	Incidents []Incident `json:"incidents"`
+	Total     int        `json:"total"`
+}
+
 // ─── gRPC stubs ───────────────────────────────────────────────────────────────
 
 type SubmitResponse struct {

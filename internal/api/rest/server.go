@@ -20,6 +20,7 @@ import (
 	"github.com/bastion/tracker/internal/honeytoken"
 	"github.com/bastion/tracker/internal/hub"
 	"github.com/bastion/tracker/internal/incidents"
+	"github.com/bastion/tracker/internal/monitor"
 	"github.com/bastion/tracker/internal/processor"
 	"github.com/bastion/tracker/internal/runbook"
 	"github.com/bastion/tracker/internal/store"
@@ -45,6 +46,7 @@ func New(
 	ht *honeytoken.Manager,
 	authCfg *config.AuthConfig,
 	signer *audit.Signer,
+	mon *monitor.Manager,
 	port int,
 ) *Server {
 	rec := demo.NewRecorder()
@@ -62,6 +64,7 @@ func New(
 		recorder:  rec,
 		runbooks:  runbook.New(),
 		signer:    signer,
+		mon:       mon,
 	}
 	srv := &Server{port: port}
 	srv.httpServer = &http.Server{
@@ -180,6 +183,20 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 
 		// Audit verification — operator+
 		r.With(operatorOrOpen(authCfg)).Get("/v1/audit/verify", h.VerifyAuditLog)
+
+		// Pipeline Monitor — viewer GET / operator POST+DELETE
+		r.Get("/v1/monitor/mode", h.MonitorGetMode)
+		r.With(operatorOrOpen(authCfg)).Post("/v1/monitor/mode", h.MonitorSetMode)
+
+		r.Get("/v1/monitor/sessions", h.MonitorListSessions)
+		r.Get("/v1/monitor/sessions/{session_id}", h.MonitorGetSession)
+		r.With(operatorOrOpen(authCfg)).Delete("/v1/monitor/sessions/{session_id}", h.MonitorDeleteSession)
+		r.With(operatorOrOpen(authCfg)).Post("/v1/monitor/sessions/{session_id}/steps/{step_id}/annotate", h.MonitorAnnotateStep)
+
+		r.Get("/v1/monitor/checkpoints", h.MonitorListCheckpoints)
+		r.Get("/v1/monitor/checkpoints/{checkpoint_id}", h.MonitorGetCheckpoint)
+		r.With(operatorOrOpen(authCfg)).Post("/v1/monitor/checkpoints/{checkpoint_id}/decide", h.MonitorDecideCheckpoint)
+		r.With(operatorOrOpen(authCfg)).Post("/v1/monitor/checkpoints", h.MonitorCreateCheckpoint)
 	})
 
 	// WebSocket (public — auth enforced at application level if needed).
