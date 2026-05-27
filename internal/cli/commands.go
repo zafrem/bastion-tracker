@@ -33,15 +33,17 @@ func Root() *cobra.Command {
 
 // ─── Server command (delegates to main for wiring) ───────────────────────────
 
+// ServerConfigPath is set by the --config flag and read by runServer in main.go.
+var ServerConfigPath string
+
 func serverCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "server",
-		Short: "Start the Tracker server",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("tracker-cli server: use main.go runServer()")
-			return nil
-		},
+		Short: "Start the Tracker REST + gRPC server",
+		// RunE is replaced by main.go with the real runServer function.
 	}
+	cmd.Flags().StringVar(&ServerConfigPath, "config", "", "path to config YAML (default: ./config/config.yaml)")
+	return cmd
 }
 
 // ─── Stream ───────────────────────────────────────────────────────────────────

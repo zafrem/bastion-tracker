@@ -88,9 +88,15 @@ func (s *Server) SubmitBatchEvents(_ context.Context, req *models.BatchEventRequ
 	return &models.BatchResponse{Accepted: len(req.Events)}, nil
 }
 
-func (s *Server) QueryEvents(_ context.Context, req *models.QueryRequest) (*models.EventsResponse, error) {
+// QueryEvents streams historical events matching the filter (server-streaming, SRS §6.2).
+func (s *Server) QueryEvents(req *models.QueryRequest, stream grpc.ServerStream) error {
 	events := s.store.RecentEvents(*req, req.Limit)
-	return &models.EventsResponse{Events: events, Total: len(events)}, nil
+	for i := range events {
+		if err := stream.SendMsg(&events[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) GetTrace(_ context.Context, req *models.TraceRequest) (*models.TraceResponse, error) {
@@ -101,10 +107,41 @@ func (s *Server) GetTrace(_ context.Context, req *models.TraceRequest) (*models.
 	return &models.TraceResponse{Trace: *tr}, nil
 }
 
+func (s *Server) GetLineage(_ context.Context, req *models.LineageRequest) (*models.LineageResponse, error) {
+	tr, ok := s.store.GetTrace(req.TraceID)
+	if !ok {
+		return &models.LineageResponse{TraceID: req.TraceID, Found: false}, nil
+	}
+	return &models.LineageResponse{
+		TraceID: req.TraceID,
+		Found:   true,
+		Spans:   tr.Spans,
+	}, nil
+}
+
+func (s *Server) GetIncidents(_ context.Context, req *models.IncidentRequest) (*models.IncidentResponse, error) {
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	all := s.store.ListIncidents(req.Status)
+	filtered := make([]models.Incident, 0, len(all))
+	for _, inc := range all {
+		if req.TenantID != "" && inc.TenantID != req.TenantID {
+			continue
+		}
+		filtered = append(filtered, inc)
+		if len(filtered) >= limit {
+			break
+		}
+	}
+	return &models.IncidentResponse{Incidents: filtered, Total: len(filtered)}, nil
+}
+
 func (s *Server) Health(_ context.Context, _ *models.HealthRequest) (*models.HealthStatus, error) {
 	return &models.HealthStatus{
 		Status:  "ok",
-		Version: "1.0.0",
+		Version: "3.0.0",
 		Checks:  map[string]string{"grpc": "up"},
 	}, nil
 }

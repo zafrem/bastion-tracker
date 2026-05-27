@@ -20,6 +20,22 @@ type Config struct {
 	Logging       LoggingConfig       `yaml:"logging"`
 	Metrics       MetricsConfig       `yaml:"metrics"`
 	BypassMonitor BypassMonitorConfig `yaml:"bypass_monitor"`
+	Monitor       MonitorConfig       `yaml:"monitor"`
+}
+
+// MonitorConfig controls the pipeline monitoring / human-in-the-loop mode.
+type MonitorConfig struct {
+	// Mode is the initial monitoring mode: "off" (default), "observe", or "gate".
+	// Can be changed at runtime via POST /v1/monitor/mode.
+	Mode string `yaml:"mode"`
+	// SessionRetentionHours is how long completed sessions are kept in memory (default 24).
+	SessionRetentionHours int `yaml:"session_retention_hours"`
+	// CheckpointTimeoutSec is how long a gate checkpoint waits for a human decision
+	// before timing out (default 300 seconds = 5 minutes).
+	CheckpointTimeoutSec int `yaml:"checkpoint_timeout_sec"`
+	// AutoApproveOnTimeout: when true a timed-out checkpoint is treated as approved.
+	// Default false (fail-safe: timeout = reject).
+	AutoApproveOnTimeout bool `yaml:"auto_approve_on_timeout"`
 }
 
 // BypassMonitorConfig controls pipeline bypass anomaly detection.
@@ -137,7 +153,7 @@ type MetricsConfig struct {
 // Defaults returns a usable configuration for standalone/PoC mode.
 func Defaults() *Config {
 	return &Config{
-		Version: "1.0",
+		Version: "3.0",
 		Server: ServerConfig{
 			RESTPort:      8080,
 			GRPCPort:      9090,
@@ -193,6 +209,12 @@ func Defaults() *Config {
 		BypassMonitor: BypassMonitorConfig{
 			Enabled:         true,
 			SensitiveLabels: []string{"pii", "sensitive", "confidential", "restricted"},
+		},
+		Monitor: MonitorConfig{
+			Mode:                  "off",
+			SessionRetentionHours: 24,
+			CheckpointTimeoutSec:  300,
+			AutoApproveOnTimeout:  false,
 		},
 	}
 }

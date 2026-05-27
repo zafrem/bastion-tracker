@@ -24,6 +24,8 @@ import (
 	"github.com/bastion/tracker/internal/honeytoken"
 	"github.com/bastion/tracker/internal/hub"
 	"github.com/bastion/tracker/internal/incidents"
+	"github.com/bastion/tracker/internal/models"
+	"github.com/bastion/tracker/internal/monitor"
 	"github.com/bastion/tracker/internal/notify"
 	"github.com/bastion/tracker/internal/processor"
 	"github.com/bastion/tracker/internal/store"
@@ -86,6 +88,7 @@ func buildComponents(cfg *config.Config) (
 	*incidents.Manager,
 	*honeytoken.Manager,
 	*audit.Signer,
+	*monitor.Manager,
 ) {
 	s := store.New(cfg.Storage.MaxEventsMemory)
 	h := hub.New(cfg.Realtime.BufferSize)
@@ -109,13 +112,32 @@ func buildComponents(cfg *config.Config) (
 		proc.SetBypassMonitor(bm)
 	}
 
+	// Pipeline monitor — observe/gate modes.
+	mon := monitor.New(monitor.Config{
+		Mode:                  monitor.Mode(cfg.Monitor.Mode),
+		SessionRetentionHours: cfg.Monitor.SessionRetentionHours,
+		CheckpointTimeoutSec:  cfg.Monitor.CheckpointTimeoutSec,
+		AutoApproveOnTimeout:  cfg.Monitor.AutoApproveOnTimeout,
+	})
+	// Attach the observe hook: every processed event is forwarded to the monitor.
+	proc.AddHook(func(ev models.BastionEvent) { mon.ObserveEvent(ev) })
+	// Wire WebSocket broadcast so operators see live step/checkpoint pushes.
+	mon.SetBroadcast(func(v any) {
+		if msg, ok := v.(models.WSMessage); ok {
+			h.Broadcast(msg)
+		}
+	})
+
 	demoEng := demo.NewEngine(proc)
 	demoEng.SetBroadcaster(h)
-	return s, h, proc, demoEng, al, inc, ht, signer
+	return s, h, proc, demoEng, al, inc, ht, signer, mon
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
-	cfgPath := os.Getenv("CONFIG_PATH")
+	cfgPath := cli.ServerConfigPath
+	if cfgPath == "" {
+		cfgPath = os.Getenv("CONFIG_PATH")
+	}
 	if cfgPath == "" {
 		cfgPath = "./config/config.yaml"
 	}
@@ -124,7 +146,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	s, h, proc, demoEng, al, inc, ht, signer := buildComponents(cfg)
+	s, h, proc, demoEng, al, inc, ht, signer, mon := buildComponents(cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -144,7 +166,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		proc.SetPublisher(pub)
 	}
 
-	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, cfg.Server.RESTPort)
+	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, cfg.Server.RESTPort)
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
 
 	go al.StartBackgroundTasks(ctx)
@@ -157,7 +179,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if cfg.Auth.Enabled {
 		authStatus = "enabled"
 	}
-	fmt.Printf("Bastion-Tracker v1.0 ready\n")
+	fmt.Printf("Bastion-Tracker v%s ready\n", cfg.Version)
 	fmt.Printf("  REST/UI  → http://localhost:%d\n", cfg.Server.RESTPort)
 	fmt.Printf("  gRPC     → localhost:%d\n", cfg.Server.GRPCPort)
 	fmt.Printf("  Auth     → %s\n", authStatus)
@@ -183,9 +205,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 func runDemoServer(cmd *cobra.Command, args []string) error {
 	cfg := config.Defaults()
-	s, h, proc, demoEng, al, inc, ht, signer := buildComponents(cfg)
+	s, h, proc, demoEng, al, inc, ht, signer, mon := buildComponents(cfg)
 
-	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, cfg.Server.RESTPort)
+	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, cfg.Server.RESTPort)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
