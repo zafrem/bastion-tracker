@@ -22,6 +22,9 @@ type Store struct {
 	alerts    map[string]*models.Alert
 	tokens    map[string]*models.HoneyToken
 	triggers  map[string][]models.HoneyTokenTrigger // token_id → triggers
+
+	// MR-05-003: chunk lineage — trace_id → ordered list of retrieved chunks
+	lineage map[string][]models.ChunkLineageEntry
 }
 
 // New creates a Store with the given ring-buffer capacity.
@@ -37,6 +40,7 @@ func New(maxEvents int) *Store {
 		alerts:    make(map[string]*models.Alert),
 		tokens:    make(map[string]*models.HoneyToken),
 		triggers:  make(map[string][]models.HoneyTokenTrigger),
+		lineage:   make(map[string][]models.ChunkLineageEntry),
 	}
 }
 
@@ -516,6 +520,39 @@ func (s *Store) AllTriggers() []models.HoneyTokenTrigger {
 		all = append(all, trigs...)
 	}
 	return all
+}
+
+// ─── Chunk lineage (MR-05-003) ────────────────────────────────────────────────
+
+// AddChunkLineage records a single retrieved chunk for a trace.
+func (s *Store) AddChunkLineage(traceID string, entry models.ChunkLineageEntry) {
+	if traceID == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lineage[traceID] = append(s.lineage[traceID], entry)
+}
+
+// GetLineageSources returns the chunk lineage for a trace, sorted by rank.
+func (s *Store) GetLineageSources(traceID string) ([]models.ChunkLineageEntry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entries, ok := s.lineage[traceID]
+	if !ok || len(entries) == 0 {
+		return nil, false
+	}
+	// Return a copy sorted by rank.
+	cp := make([]models.ChunkLineageEntry, len(entries))
+	copy(cp, entries)
+	for i := 0; i < len(cp)-1; i++ {
+		for j := i + 1; j < len(cp); j++ {
+			if cp[j].Rank < cp[i].Rank {
+				cp[i], cp[j] = cp[j], cp[i]
+			}
+		}
+	}
+	return cp, true
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────

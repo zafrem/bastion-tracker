@@ -347,6 +347,24 @@ type LineageResponse struct {
 	Spans   []Span `json:"spans"`
 }
 
+// ChunkLineageEntry records a single chunk that was retrieved and contributed to
+// an LLM response, keyed by trace_id (MR-05-003).
+type ChunkLineageEntry struct {
+	ChunkID    string  `json:"chunk_id"`
+	DocumentID string  `json:"document_id"`
+	Score      float64 `json:"score"`
+	Rank       int     `json:"rank"`
+	Collection string  `json:"collection"`
+	TenantID   string  `json:"tenant_id"`
+}
+
+// LineageSourcesResponse is the payload for GET /v1/lineage/{trace_id}/sources.
+type LineageSourcesResponse struct {
+	TraceID string              `json:"trace_id"`
+	Found   bool                `json:"found"`
+	Chunks  []ChunkLineageEntry `json:"chunks"`
+}
+
 // IncidentRequest queries incidents with optional filters.
 type IncidentRequest struct {
 	Status   string `json:"status,omitempty"`    // open, investigating, resolved

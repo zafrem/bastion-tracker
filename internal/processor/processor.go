@@ -120,6 +120,29 @@ func (p *Processor) Process(ev models.BastionEvent) {
 	p.store.AddEvent(ev)
 	p.store.UpsertTrace(ev)
 
+	// MR-05-003: extract chunk lineage from navigator.chunk_retrieved events.
+	if ev.EventType == "chunk_retrieved" && ev.TraceID != "" {
+		entry := models.ChunkLineageEntry{
+			TenantID: ev.TenantID,
+		}
+		if v, ok := ev.Data["chunk_id"].(string); ok {
+			entry.ChunkID = v
+		}
+		if v, ok := ev.Data["document_id"].(string); ok {
+			entry.DocumentID = v
+		}
+		if v, ok := ev.Data["score"].(float64); ok {
+			entry.Score = v
+		}
+		if v, ok := ev.Data["rank"].(float64); ok {
+			entry.Rank = int(v)
+		}
+		if v, ok := ev.Data["collection"].(string); ok {
+			entry.Collection = v
+		}
+		p.store.AddChunkLineage(ev.TraceID, entry)
+	}
+
 	// Pipeline stats.
 	if ev.PipelineType != "" {
 		metrics.PipelineRequests.WithLabelValues(ev.PipelineType, ev.Status).Inc()
