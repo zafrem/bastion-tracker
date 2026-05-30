@@ -247,6 +247,18 @@ func (h *handlers) LineageAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, models.EventsResponse{Events: evts, Total: len(evts)})
 }
 
+// GetLineageSources returns all chunk_retrieved entries for a trace (MR-05-003).
+// GET /v1/lineage/{trace_id}/sources
+func (h *handlers) GetLineageSources(w http.ResponseWriter, r *http.Request) {
+	traceID := chi.URLParam(r, "trace_id")
+	chunks, ok := h.store.GetLineageSources(traceID)
+	writeJSON(w, 200, models.LineageSourcesResponse{
+		TraceID: traceID,
+		Found:   ok,
+		Chunks:  chunks,
+	})
+}
+
 // GetTraceTimeline returns spans positioned on a timeline, ready for visualization.
 func (h *handlers) GetTraceTimeline(w http.ResponseWriter, r *http.Request) {
 	traceID := chi.URLParam(r, "trace_id")

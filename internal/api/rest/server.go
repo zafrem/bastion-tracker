@@ -126,8 +126,9 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 		r.Get("/v1/traces/{trace_id}", h.GetTrace)
 		r.Get("/v1/traces/{trace_id}/timeline", h.GetTraceTimeline)
 
-		// Lineage — aliases + new query endpoints (SRS doc 22 §6.2)
+		// Lineage — aliases + new query endpoints (SRS doc 22 §6.2 + MR-05-003)
 		r.Get("/v1/lineage/{trace_id}", h.GetTrace)
+		r.Get("/v1/lineage/{trace_id}/sources", h.GetLineageSources)
 		r.Get("/v1/lineage/user/{user_id}", h.ListTracesByUser)
 		r.Get("/v1/lineage/data/{data_ref}", h.LineageByDataRef)
 		r.Get("/v1/lineage/audit", h.LineageAudit)
