@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/bastion/tracker/internal/alerts"
+	"github.com/bastion/tracker/internal/anomaly"
 	"github.com/bastion/tracker/internal/audit"
 	"github.com/bastion/tracker/internal/auth"
 	"github.com/bastion/tracker/internal/config"
@@ -33,6 +35,7 @@ type handlers struct {
 	demo      *demo.Engine
 	alerts    *alerts.Manager
 	incidents *incidents.Manager
+	anomaly   *anomaly.Detector
 	honey     *honeytoken.Manager
 	authCfg   *config.AuthConfig
 	recorder  *demo.Recorder
@@ -73,6 +76,7 @@ func (h *handlers) Login(w http.ResponseWriter, r *http.Request) {
 		passwordOK = matched.Password == req.Password
 	}
 	if !passwordOK {
+		h.loginAuditRecord(req.Username, "", r.RemoteAddr, false, "invalid credentials")
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -86,6 +90,7 @@ func (h *handlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "token generation failed")
 		return
 	}
+	h.loginAuditRecord(matched.Name, matched.Role, r.RemoteAddr, true, "")
 	writeJSON(w, http.StatusOK, models.LoginResponse{
 		Token:     token,
 		ExpiresIn: expiry.String(),
@@ -873,6 +878,150 @@ func parseQuery(r *http.Request) models.QueryRequest {
 		}
 	}
 	return q
+}
+
+// ─── Auth refresh ─────────────────────────────────────────────────────────────
+
+func (h *handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	var req models.RefreshRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if h.authCfg == nil || !h.authCfg.Enabled {
+		writeError(w, http.StatusNotFound, "auth not enabled")
+		return
+	}
+	refreshExpiry, err := time.ParseDuration(h.authCfg.RefreshExpiry)
+	if err != nil || refreshExpiry <= 0 {
+		refreshExpiry, _ = time.ParseDuration(h.authCfg.JWTExpiry)
+	}
+	if refreshExpiry <= 0 {
+		refreshExpiry = auth.DefaultExpiry
+	}
+	token, claims, err := auth.RefreshToken(req.Token, h.authCfg.JWTSecret, refreshExpiry)
+	if err != nil {
+		h.store.RecordLogin(models.LoginAuditEvent{
+			Timestamp: time.Now(),
+			Username:  "unknown",
+			SourceIP:  r.RemoteAddr,
+			Success:   false,
+			Reason:    "refresh: " + err.Error(),
+		})
+		writeError(w, http.StatusUnauthorized, "invalid or expired token")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.LoginResponse{
+		Token:     token,
+		ExpiresIn: refreshExpiry.String(),
+		Role:      claims.Role,
+	})
+}
+
+// ─── Dashboard handlers ────────────────────────────────────────────────────────
+
+func (h *handlers) DashboardSummary(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.store.DashboardSummary())
+}
+
+func (h *handlers) PipelineHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.store.PipelineHealth())
+}
+
+func (h *handlers) RecentActivity(w http.ResponseWriter, r *http.Request) {
+	q := models.QueryRequest{Severity: "warning"}
+	// Also include error and critical.
+	events := h.store.RecentEvents(q, 20)
+	// Merge critical.
+	crit := h.store.RecentEvents(models.QueryRequest{Severity: "critical"}, 20)
+	events = append(events, crit...)
+	// Merge error.
+	errs := h.store.RecentEvents(models.QueryRequest{Severity: "error"}, 20)
+	events = append(events, errs...)
+	// Sort by time (newest first via bubble sort — PoC).
+	for i := 0; i < len(events)-1; i++ {
+		for j := i + 1; j < len(events); j++ {
+			if events[j].Timestamp.After(events[i].Timestamp) {
+				events[i], events[j] = events[j], events[i]
+			}
+		}
+	}
+	if len(events) > 20 {
+		events = events[:20]
+	}
+	writeJSON(w, http.StatusOK, models.EventsResponse{Events: events, Total: len(events)})
+}
+
+func (h *handlers) TenantDashboard(w http.ResponseWriter, r *http.Request) {
+	tenantID := chi.URLParam(r, "tenant_id")
+	writeJSON(w, http.StatusOK, h.store.TenantActivity(tenantID))
+}
+
+// ─── Enhanced log browser ─────────────────────────────────────────────────────
+
+// ListEventsPaged supports cursor-based pagination (?cursor=<event_id>&limit=50).
+func (h *handlers) ListEventsPaged(w http.ResponseWriter, r *http.Request) {
+	q := parseQuery(r)
+	cursor := r.URL.Query().Get("cursor")
+	limit := intParam(r, "limit", 50)
+	page := h.store.EventsPage(q, cursor, limit)
+	writeJSON(w, http.StatusOK, page)
+}
+
+// ExportEvents streams a JSONL download (admin only — enforced at route level).
+func (h *handlers) ExportEvents(w http.ResponseWriter, r *http.Request) {
+	q := parseQuery(r)
+	limit := intParam(r, "limit", 10000)
+	if limit > 10000 {
+		limit = 10000
+	}
+	evts := h.store.RecentEvents(q, limit)
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="events-%s.jsonl"`, time.Now().Format("20060102-150405")))
+	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	for _, ev := range evts {
+		_ = enc.Encode(ev)
+	}
+}
+
+// ─── Login audit ──────────────────────────────────────────────────────────────
+
+func (h *handlers) LoginAudit(w http.ResponseWriter, r *http.Request) {
+	limit := intParam(r, "limit", 100)
+	writeJSON(w, http.StatusOK, h.store.RecentLogins(limit))
+}
+
+// ─── Anomaly endpoints ────────────────────────────────────────────────────────
+
+func (h *handlers) AnomalyBaselines(w http.ResponseWriter, r *http.Request) {
+	if h.anomaly == nil {
+		writeJSON(w, http.StatusOK, []models.AnomalyBaseline{})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.anomaly.Baselines())
+}
+
+func (h *handlers) AnomalyEvents(w http.ResponseWriter, r *http.Request) {
+	if h.anomaly == nil {
+		writeJSON(w, http.StatusOK, []models.AnomalyEvent{})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.anomaly.Recent())
+}
+
+// ─── Login audit wiring in Login handler ──────────────────────────────────────
+
+// loginAuditRecord emits a LoginAuditEvent to the store; called from Login and
+// RefreshToken so every attempt is recorded.
+func (h *handlers) loginAuditRecord(username, role, sourceIP string, success bool, reason string) {
+	h.store.RecordLogin(models.LoginAuditEvent{
+		Timestamp: time.Now(),
+		Username:  username,
+		Role:      role,
+		SourceIP:  sourceIP,
+		Success:   success,
+		Reason:    reason,
+	})
 }
 
 func intParam(r *http.Request, key string, def int) int {

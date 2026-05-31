@@ -25,6 +25,9 @@ type Store struct {
 
 	// MR-05-003: chunk lineage — trace_id → ordered list of retrieved chunks
 	lineage map[string][]models.ChunkLineageEntry
+
+	// Login audit trail — last 10 000 entries (ring-style via slice cap)
+	loginAudit []models.LoginAuditEvent
 }
 
 // New creates a Store with the given ring-buffer capacity.
@@ -33,14 +36,15 @@ func New(maxEvents int) *Store {
 		maxEvents = 10000
 	}
 	return &Store{
-		events:    make([]models.BastionEvent, maxEvents),
-		maxEvents: maxEvents,
-		traces:    make(map[string]*models.Trace),
-		incidents: make(map[string]*models.Incident),
-		alerts:    make(map[string]*models.Alert),
-		tokens:    make(map[string]*models.HoneyToken),
-		triggers:  make(map[string][]models.HoneyTokenTrigger),
-		lineage:   make(map[string][]models.ChunkLineageEntry),
+		events:     make([]models.BastionEvent, maxEvents),
+		maxEvents:  maxEvents,
+		traces:     make(map[string]*models.Trace),
+		incidents:  make(map[string]*models.Incident),
+		alerts:     make(map[string]*models.Alert),
+		tokens:     make(map[string]*models.HoneyToken),
+		triggers:   make(map[string][]models.HoneyTokenTrigger),
+		lineage:    make(map[string][]models.ChunkLineageEntry),
+		loginAudit: make([]models.LoginAuditEvent, 0, 256),
 	}
 }
 
@@ -556,6 +560,253 @@ func (s *Store) GetLineageSources(traceID string) ([]models.ChunkLineageEntry, b
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
+
+// ─── Dashboard helpers ────────────────────────────────────────────────────────
+
+// DashboardSummary computes the real-time summary for the management dashboard.
+func (s *Store) DashboardSummary() models.DashboardSummary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now()
+	cutoff1h := now.Add(-1 * time.Hour)
+	cutoff24h := now.Add(-24 * time.Hour)
+
+	size := s.maxEvents
+	if s.count < size {
+		size = s.count
+	}
+
+	var count1h, count24h, blocked1h int64
+	moduleCounts := make(map[string]int64)
+	honeyTriggers := 0
+
+	for i := 0; i < size; i++ {
+		idx := ((s.head - 1 - i) + s.maxEvents) % s.maxEvents
+		ev := s.events[idx]
+		if ev.EventID == "" {
+			continue
+		}
+		if ev.Timestamp.Before(cutoff24h) {
+			break // ring buffer is newest-first; once we pass 24h we're done
+		}
+		count24h++
+		moduleCounts[ev.Module]++
+		if ev.Timestamp.After(cutoff1h) {
+			count1h++
+			if ev.Status == "blocked" {
+				blocked1h++
+			}
+		}
+		if len(ev.EventType) >= 12 && ev.EventType[:12] == "honey_token_" {
+			honeyTriggers++
+		}
+	}
+
+	// Top-5 modules sorted by count.
+	type kv struct {
+		k string
+		v int64
+	}
+	sorted := make([]kv, 0, len(moduleCounts))
+	for k, v := range moduleCounts {
+		sorted = append(sorted, kv{k, v})
+	}
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[j].v > sorted[i].v {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+	top := make([]models.ModuleVolume, 0, 5)
+	for _, item := range sorted {
+		if len(top) == 5 {
+			break
+		}
+		top = append(top, models.ModuleVolume{Module: item.k, Count: item.v})
+	}
+
+	// Count active incidents and firing alerts.
+	activeInc := 0
+	for _, inc := range s.incidents {
+		if inc.Status != models.IncidentResolved {
+			activeInc++
+		}
+	}
+	firingAlerts := 0
+	for _, al := range s.alerts {
+		if al.Status == models.AlertFiring {
+			firingAlerts++
+		}
+	}
+
+	return models.DashboardSummary{
+		EventCount1h:       count1h,
+		EventCount24h:      count24h,
+		ActiveIncidents:    activeInc,
+		FiringAlerts:       firingAlerts,
+		HoneyTokenTriggers: honeyTriggers,
+		BlockedRequests1h:  blocked1h,
+		TopModules:         top,
+		UpdatedAt:          now,
+	}
+}
+
+// PipelineHealth returns per-module health enriched with events/min throughput.
+func (s *Store) PipelineHealth() models.PipelineHealthResponse {
+	snap := s.Topology() // existing method
+	entries := make([]models.PipelineHealthEntry, 0, len(snap.Modules))
+	for _, m := range snap.Modules {
+		entries = append(entries, models.PipelineHealthEntry{
+			Module:       m.Module,
+			Status:       m.Status,
+			AvgLatencyMs: m.LatencyMs,
+			ErrorRate:    m.ErrorRate,
+			EventsPerMin: m.Throughput * 60,
+			LastEventAt:  m.LastEventAt,
+		})
+	}
+	return models.PipelineHealthResponse{Modules: entries, UpdatedAt: snap.UpdatedAt}
+}
+
+// TenantActivity returns activity counts for a specific tenant.
+func (s *Store) TenantActivity(tenantID string) models.TenantActivity {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now()
+	cutoff1h := now.Add(-1 * time.Hour)
+	size := s.maxEvents
+	if s.count < size {
+		size = s.count
+	}
+
+	var count1h, blocked1h int64
+	catBreakdown := make(map[string]int64)
+	honeyCount := 0
+
+	for i := 0; i < size; i++ {
+		idx := ((s.head - 1 - i) + s.maxEvents) % s.maxEvents
+		ev := s.events[idx]
+		if ev.EventID == "" || ev.TenantID != tenantID {
+			continue
+		}
+		if ev.Timestamp.Before(cutoff1h) {
+			continue
+		}
+		count1h++
+		if ev.Status == "blocked" {
+			blocked1h++
+		}
+		if cat, ok := ev.Labels["category"]; ok && cat != "" {
+			catBreakdown[cat]++
+		}
+		if len(ev.EventType) >= 12 && ev.EventType[:12] == "honey_token_" {
+			honeyCount++
+		}
+	}
+
+	incCount := 0
+	for _, inc := range s.incidents {
+		if inc.TenantID == tenantID {
+			incCount++
+		}
+	}
+
+	return models.TenantActivity{
+		TenantID:           tenantID,
+		EventCount1h:       count1h,
+		IncidentCount:      incCount,
+		BlockedCount1h:     blocked1h,
+		HoneyTokenTriggers: honeyCount,
+		CategoryBreakdown:  catBreakdown,
+		UpdatedAt:          now,
+	}
+}
+
+// EventsPage returns a cursor-paginated page of events.
+// cursor is the event_id of the last event on the previous page (empty = start from most recent).
+// limit is capped at 200.
+func (s *Store) EventsPage(q models.QueryRequest, cursor string, limit int) models.EventsPage {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	size := s.maxEvents
+	if s.count < size {
+		size = s.count
+	}
+
+	// Find the cursor position in the ring.
+	startIdx := 0
+	if cursor != "" {
+		for i := 0; i < size; i++ {
+			idx := ((s.head - 1 - i) + s.maxEvents) % s.maxEvents
+			if s.events[idx].EventID == cursor {
+				startIdx = i + 1 // begin after the cursor
+				break
+			}
+		}
+	}
+
+	results := make([]models.BastionEvent, 0, limit)
+	for i := startIdx; i < size && len(results) < limit; i++ {
+		idx := ((s.head - 1 - i) + s.maxEvents) % s.maxEvents
+		ev := s.events[idx]
+		if ev.EventID == "" {
+			continue
+		}
+		if !matchEvent(ev, q) {
+			continue
+		}
+		results = append(results, ev)
+	}
+
+	nextCursor := ""
+	if len(results) == limit {
+		nextCursor = results[len(results)-1].EventID
+	}
+	return models.EventsPage{
+		Events:     results,
+		Total:      len(results),
+		NextCursor: nextCursor,
+	}
+}
+
+// ─── Login audit ──────────────────────────────────────────────────────────────
+
+// RecordLogin appends a login audit event; trims to last 10 000.
+func (s *Store) RecordLogin(ev models.LoginAuditEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.loginAudit) >= 10000 {
+		s.loginAudit = s.loginAudit[1:]
+	}
+	s.loginAudit = append(s.loginAudit, ev)
+}
+
+// RecentLogins returns the last n login audit events.
+func (s *Store) RecentLogins(limit int) []models.LoginAuditEvent {
+	if limit <= 0 {
+		limit = 100
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.loginAudit) <= limit {
+		out := make([]models.LoginAuditEvent, len(s.loginAudit))
+		copy(out, s.loginAudit)
+		return out
+	}
+	start := len(s.loginAudit) - limit
+	out := make([]models.LoginAuditEvent, limit)
+	copy(out, s.loginAudit[start:])
+	return out
+}
+
+// ─── Search (keyword) ─────────────────────────────────────────────────────────
 
 func (s *Store) SearchEvents(keyword string, limit int) []models.BastionEvent {
 	if limit <= 0 {

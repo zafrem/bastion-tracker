@@ -14,6 +14,7 @@ import (
 	grpcsrv "github.com/bastion/tracker/internal/api/grpc"
 	"github.com/bastion/tracker/internal/api/rest"
 	"github.com/bastion/tracker/internal/alerts"
+	"github.com/bastion/tracker/internal/anomaly"
 	"github.com/bastion/tracker/internal/audit"
 	"github.com/bastion/tracker/internal/bypass"
 	"github.com/bastion/tracker/internal/cli"
@@ -89,6 +90,7 @@ func buildComponents(cfg *config.Config) (
 	*honeytoken.Manager,
 	*audit.Signer,
 	*monitor.Manager,
+	*anomaly.Detector,
 ) {
 	s := store.New(cfg.Storage.MaxEventsMemory)
 	h := hub.New(cfg.Realtime.BufferSize)
@@ -130,7 +132,42 @@ func buildComponents(cfg *config.Config) (
 
 	demoEng := demo.NewEngine(proc)
 	demoEng.SetBroadcaster(h)
-	return s, h, proc, demoEng, al, inc, ht, signer, mon
+
+	// Anomaly detector — wired into the event processor as a hook.
+	var anomalyDet *anomaly.Detector
+	if cfg.Anomaly.Enabled {
+		anomalyDet = anomaly.New(cfg.Anomaly, &anomalySink{proc: proc, hub: h})
+		proc.AddHook(func(ev models.BastionEvent) { anomalyDet.Inspect(ev) })
+	}
+
+	return s, h, proc, demoEng, al, inc, ht, signer, mon, anomalyDet
+}
+
+// anomalySink converts a detected anomaly into a BastionEvent → incident + WebSocket push.
+type anomalySink struct {
+	proc *processor.Processor
+	hub  *hub.Hub
+}
+
+func (a *anomalySink) OnAnomaly(ev models.AnomalyEvent) {
+	// Broadcast immediately to the WebSocket dashboard.
+	a.hub.Broadcast(models.WSMessage{Type: "anomaly", Payload: ev})
+	// Synthesise a security event so the incident auto-creator fires.
+	bastionEv := models.BastionEvent{
+		Module:    "tracker",
+		EventType: "anomaly_detected",
+		Severity:  ev.Severity,
+		Status:    "error",
+		TenantID:  ev.TenantID,
+		UserID:    ev.UserID,
+		TraceID:   ev.TraceID,
+		Data: map[string]any{
+			"anomaly_id":  ev.AnomalyID,
+			"pattern":     ev.Pattern,
+			"description": ev.Description,
+		},
+	}
+	go a.proc.Process(bastionEv)
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -146,7 +183,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	s, h, proc, demoEng, al, inc, ht, signer, mon := buildComponents(cfg)
+	s, h, proc, demoEng, al, inc, ht, signer, mon, anomalyDet := buildComponents(cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -166,7 +203,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		proc.SetPublisher(pub)
 	}
 
-	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, cfg.Server.RESTPort)
+	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort)
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
 
 	go al.StartBackgroundTasks(ctx)
@@ -205,9 +242,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 func runDemoServer(cmd *cobra.Command, args []string) error {
 	cfg := config.Defaults()
-	s, h, proc, demoEng, al, inc, ht, signer, mon := buildComponents(cfg)
+	s, h, proc, demoEng, al, inc, ht, signer, mon, anomalyDet := buildComponents(cfg)
 
-	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, cfg.Server.RESTPort)
+	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

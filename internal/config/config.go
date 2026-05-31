@@ -21,6 +21,22 @@ type Config struct {
 	Metrics       MetricsConfig       `yaml:"metrics"`
 	BypassMonitor BypassMonitorConfig `yaml:"bypass_monitor"`
 	Monitor       MonitorConfig       `yaml:"monitor"`
+	Anomaly       AnomalyConfig       `yaml:"anomaly"`
+}
+
+// AnomalyConfig controls the statistical and pattern-based anomaly detector.
+type AnomalyConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Statistical baseline: flag events > SigmaThreshold standard deviations above mean.
+	SigmaThreshold float64 `yaml:"sigma_threshold"` // default 3.0
+	WindowHours    int     `yaml:"window_hours"`    // rolling window for baseline; default 1
+	// Pattern rules
+	HighFreqUserLimit   int    `yaml:"high_freq_user_limit"`   // requests/minute; default 30
+	RepeatedBlockWindow string `yaml:"repeated_block_window"`  // e.g. "5m"; default "5m"
+	RepeatedBlockCount  int    `yaml:"repeated_block_count"`   // blocks in window; default 3
+	// Active hours: outside these hours, access is flagged (24h clock, per-tenant override TBD)
+	ActiveHoursStart int `yaml:"active_hours_start"` // 0–23; default 0 (disabled)
+	ActiveHoursEnd   int `yaml:"active_hours_end"`   // 0–23; default 0 (disabled)
 }
 
 // MonitorConfig controls the pipeline monitoring / human-in-the-loop mode.
@@ -114,10 +130,12 @@ type WebhookConfig struct {
 
 // AuthConfig controls JWT authentication for the REST API.
 type AuthConfig struct {
-	Enabled   bool         `yaml:"enabled"`
-	JWTSecret string       `yaml:"jwt_secret"`
-	JWTExpiry string       `yaml:"jwt_expiry"` // e.g. "24h"
-	Users     []UserConfig `yaml:"users"`
+	Enabled        bool         `yaml:"enabled"`
+	JWTSecret      string       `yaml:"jwt_secret"`
+	JWTExpiry      string       `yaml:"jwt_expiry"`      // e.g. "24h"
+	RefreshExpiry  string       `yaml:"refresh_expiry"`  // e.g. "168h" (7 days); default = JWTExpiry
+	RequireBcrypt  bool         `yaml:"require_bcrypt"`  // reject plaintext passwords when true
+	Users          []UserConfig `yaml:"users"`
 }
 
 // UserConfig represents a single API user with a role.
@@ -195,14 +213,24 @@ func Defaults() *Config {
 			Minimal: []string{"sentinel", "navigator", "llm"},
 		},
 		Auth: AuthConfig{
-			Enabled:   false, // off by default; enable in config.yaml
-			JWTSecret: "change-me-in-production",
-			JWTExpiry: "24h",
+			Enabled:       false, // off by default; enable in config.yaml
+			JWTSecret:     "change-me-in-production",
+			JWTExpiry:     "8h",
+			RefreshExpiry: "168h",
+			RequireBcrypt: false, // flip to true in production
 			Users: []UserConfig{
 				{Name: "admin", Password: "admin", Role: "admin"},
 				{Name: "ops", Password: "ops", Role: "operator"},
 				{Name: "viewer", Password: "viewer", Role: "viewer"},
 			},
+		},
+		Anomaly: AnomalyConfig{
+			Enabled:             true,
+			SigmaThreshold:      3.0,
+			WindowHours:         1,
+			HighFreqUserLimit:   30,
+			RepeatedBlockWindow: "5m",
+			RepeatedBlockCount:  3,
 		},
 		Logging: LoggingConfig{Level: "info", Format: "json"},
 		Metrics: MetricsConfig{Enabled: true, Port: 9091},
