@@ -280,3 +280,25 @@ func (h *Hub) ConnectionCount() int {
 	defer h.mu.RUnlock()
 	return len(h.clients)
 }
+
+// StartDashboardPush begins broadcasting dashboard summary updates every interval
+// to all connected WebSocket clients. The supplied summaryFn is called once per
+// interval to produce the current payload; it must be goroutine-safe.
+// Stops when ctx is done.
+func (h *Hub) StartDashboardPush(ctx interface{ Done() <-chan struct{} }, interval time.Duration, summaryFn func() models.WSMessage) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				h.Broadcast(summaryFn())
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}

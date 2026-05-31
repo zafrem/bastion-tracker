@@ -378,6 +378,101 @@ type IncidentResponse struct {
 	Total     int        `json:"total"`
 }
 
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+// ModuleVolume is one entry in the top-modules list.
+type ModuleVolume struct {
+	Module string `json:"module"`
+	Count  int64  `json:"count"`
+}
+
+// DashboardSummary is the payload returned by GET /v1/dashboard/summary.
+type DashboardSummary struct {
+	EventCount1h       int64          `json:"event_count_1h"`
+	EventCount24h      int64          `json:"event_count_24h"`
+	ActiveIncidents    int            `json:"active_incidents"`
+	FiringAlerts       int            `json:"firing_alerts"`
+	HoneyTokenTriggers int            `json:"honey_token_triggers"`
+	BlockedRequests1h  int64          `json:"blocked_requests_1h"`
+	TopModules         []ModuleVolume `json:"top_modules"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+}
+
+// PipelineHealthEntry is one module's health in the pipeline health view.
+type PipelineHealthEntry struct {
+	Module      string     `json:"module"`
+	Status      string     `json:"status"`
+	AvgLatencyMs float64   `json:"avg_latency_ms"`
+	ErrorRate   float64    `json:"error_rate"`
+	EventsPerMin float64   `json:"events_per_min"`
+	LastEventAt *time.Time `json:"last_event_at,omitempty"`
+}
+
+// PipelineHealthResponse is returned by GET /v1/dashboard/pipeline-health.
+type PipelineHealthResponse struct {
+	Modules   []PipelineHealthEntry `json:"modules"`
+	UpdatedAt time.Time             `json:"updated_at"`
+}
+
+// TenantActivity is returned by GET /v1/dashboard/tenant/{tenant_id}.
+type TenantActivity struct {
+	TenantID             string           `json:"tenant_id"`
+	EventCount1h         int64            `json:"event_count_1h"`
+	IncidentCount        int              `json:"incident_count"`
+	BlockedCount1h       int64            `json:"blocked_count_1h"`
+	HoneyTokenTriggers   int              `json:"honey_token_triggers"`
+	CategoryBreakdown    map[string]int64 `json:"category_breakdown"`
+	UpdatedAt            time.Time        `json:"updated_at"`
+}
+
+// EventsPage is a cursor-paginated list of events.
+type EventsPage struct {
+	Events     []BastionEvent `json:"events"`
+	Total      int            `json:"total"`
+	NextCursor string         `json:"next_cursor,omitempty"` // empty = last page
+}
+
+// ─── Anomaly detection ────────────────────────────────────────────────────────
+
+// AnomalyBaseline holds a rolling-window baseline for a module×event_type pair.
+type AnomalyBaseline struct {
+	Module      string    `json:"module"`
+	EventType   string    `json:"event_type"`
+	WindowH     int       `json:"window_h"`
+	Mean        float64   `json:"mean"`   // events/minute
+	StdDev      float64   `json:"std_dev"`
+	SigmaThresh float64   `json:"sigma_threshold"` // default 3.0
+	LastUpdated time.Time `json:"last_updated"`
+}
+
+// AnomalyEvent is emitted when a pattern-based or statistical anomaly is detected.
+type AnomalyEvent struct {
+	AnomalyID   string         `json:"anomaly_id"`
+	Pattern     string         `json:"pattern"`
+	Severity    string         `json:"severity"`
+	TenantID    string         `json:"tenant_id"`
+	UserID      string         `json:"user_id"`
+	TraceID     string         `json:"trace_id"`
+	DetectedAt  time.Time      `json:"detected_at"`
+	Description string         `json:"description"`
+	Evidence    map[string]any `json:"evidence,omitempty"`
+}
+
+// LoginAuditEvent records every login attempt for the audit trail.
+type LoginAuditEvent struct {
+	Timestamp time.Time `json:"timestamp"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role,omitempty"`
+	SourceIP  string    `json:"source_ip,omitempty"`
+	Success   bool      `json:"success"`
+	Reason    string    `json:"reason,omitempty"` // populated on failure
+}
+
+// RefreshRequest is the body for POST /v1/auth/refresh.
+type RefreshRequest struct {
+	Token string `json:"token"`
+}
+
 // ─── gRPC stubs ───────────────────────────────────────────────────────────────
 
 type SubmitResponse struct {

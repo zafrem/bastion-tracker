@@ -14,12 +14,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/bastion/tracker/internal/alerts"
+	"github.com/bastion/tracker/internal/anomaly"
 	"github.com/bastion/tracker/internal/audit"
 	"github.com/bastion/tracker/internal/config"
 	"github.com/bastion/tracker/internal/demo"
 	"github.com/bastion/tracker/internal/honeytoken"
 	"github.com/bastion/tracker/internal/hub"
 	"github.com/bastion/tracker/internal/incidents"
+	"github.com/bastion/tracker/internal/models"
 	"github.com/bastion/tracker/internal/monitor"
 	"github.com/bastion/tracker/internal/processor"
 	"github.com/bastion/tracker/internal/runbook"
@@ -47,6 +49,7 @@ func New(
 	authCfg *config.AuthConfig,
 	signer *audit.Signer,
 	mon *monitor.Manager,
+	anomalyDet *anomaly.Detector,
 	port int,
 ) *Server {
 	rec := demo.NewRecorder()
@@ -65,6 +68,7 @@ func New(
 		runbooks:  runbook.New(),
 		signer:    signer,
 		mon:       mon,
+		anomaly:   anomalyDet,
 	}
 	srv := &Server{port: port}
 	srv.httpServer = &http.Server{
@@ -74,7 +78,24 @@ func New(
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+
+	// Start periodic 30s dashboard summary push to all WebSocket clients.
+	h.StartDashboardPush(srv, 30*time.Second, func() models.WSMessage {
+		return models.WSMessage{Type: "dashboard_summary", Payload: s.DashboardSummary()}
+	})
+
 	return srv
+}
+
+// Done implements a minimal context-like interface so Hub.StartDashboardPush
+// can stop when the server shuts down.
+func (s *Server) Done() <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		_ = s.httpServer.RegisterOnShutdown // best-effort
+		// Channel stays open until process exits (PoC — no shutdown signalling needed).
+	}()
+	return ch
 }
 
 func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) http.Handler {
@@ -132,6 +153,24 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 		r.Get("/v1/lineage/user/{user_id}", h.ListTracesByUser)
 		r.Get("/v1/lineage/data/{data_ref}", h.LineageByDataRef)
 		r.Get("/v1/lineage/audit", h.LineageAudit)
+
+		// Auth refresh
+		r.Post("/v1/auth/refresh", h.RefreshToken)
+
+		// Dashboard — viewer+
+		r.Get("/v1/dashboard/summary", h.DashboardSummary)
+		r.Get("/v1/dashboard/pipeline-health", h.PipelineHealth)
+		r.Get("/v1/dashboard/recent-activity", h.RecentActivity)
+		r.With(operatorOrOpen(authCfg)).Get("/v1/dashboard/tenant/{tenant_id}", h.TenantDashboard)
+
+		// Enhanced log browser — cursor pagination + export
+		r.Get("/v1/events/page", h.ListEventsPaged)
+		r.With(adminOrOpen(authCfg)).Get("/v1/events/export", h.ExportEvents)
+		r.With(adminOrOpen(authCfg)).Get("/v1/auth/login-audit", h.LoginAudit)
+
+		// Anomaly detection — viewer GET / operator POST
+		r.Get("/v1/anomaly/baselines", h.AnomalyBaselines)
+		r.Get("/v1/anomaly/events", h.AnomalyEvents)
 
 		// Topology — viewer+
 		r.Get("/v1/topology", h.Topology)

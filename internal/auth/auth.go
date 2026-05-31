@@ -66,3 +66,21 @@ func RoleLevel(role string) int {
 		return 0
 	}
 }
+
+// RefreshToken validates an existing token and issues a fresh one with a new
+// expiry. The user ID and role are preserved; the old token is not revoked
+// (stateless JWT — revocation requires a denylist, out of scope for PoC).
+func RefreshToken(tokenStr, secret string, newExpiry time.Duration) (string, *Claims, error) {
+	claims, err := ValidateToken(tokenStr, secret)
+	if err != nil {
+		return "", nil, err
+	}
+	if newExpiry <= 0 {
+		newExpiry = DefaultExpiry
+	}
+	newToken, err := GenerateToken(claims.UserID, claims.Role, secret, newExpiry)
+	if err != nil {
+		return "", nil, err
+	}
+	return newToken, claims, nil
+}

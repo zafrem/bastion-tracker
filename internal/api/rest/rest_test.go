@@ -57,7 +57,7 @@ func newFixture(t *testing.T) *testFixture {
 	proc.AddHook(func(ev models.BastionEvent) { mon.ObserveEvent(ev) })
 
 	// Auth disabled (authCfg = nil).
-	srv := New(s, h, proc, demoEng, al, inc, ht, nil, signer, mon, 0)
+	srv := New(s, h, proc, demoEng, al, inc, ht, nil, signer, mon, nil, 0)
 	return &testFixture{
 		handler: srv.httpServer.Handler,
 		store:   s,
@@ -751,4 +751,69 @@ func TestTopologyHealth(t *testing.T) {
 func TestPipelineStats(t *testing.T) {
 	f := newFixture(t)
 	mustStatus(t, f.get(t, "/v1/pipelines/stats"), http.StatusOK)
+}
+
+// ─── Dashboard endpoints ──────────────────────────────────────────────────────
+
+func TestDashboardSummary(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/dashboard/summary"), http.StatusOK)
+}
+
+func TestDashboardPipelineHealth(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/dashboard/pipeline-health"), http.StatusOK)
+}
+
+func TestDashboardRecentActivity(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/dashboard/recent-activity"), http.StatusOK)
+}
+
+func TestDashboardTenant(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/dashboard/tenant/acme-corp"), http.StatusOK)
+}
+
+// ─── Enhanced log browser ─────────────────────────────────────────────────────
+
+func TestListEventsPaged_Empty(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/events/page"), http.StatusOK)
+}
+
+func TestListEventsPaged_WithLimit(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/events/page?limit=10"), http.StatusOK)
+}
+
+func TestExportEvents_Returns200(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/events/export"), http.StatusOK)
+}
+
+func TestLoginAudit_Empty(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/auth/login-audit"), http.StatusOK)
+}
+
+// ─── Anomaly endpoints ────────────────────────────────────────────────────────
+
+func TestAnomalyBaselines_EmptyDetector(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/anomaly/baselines"), http.StatusOK)
+}
+
+func TestAnomalyEvents_EmptyDetector(t *testing.T) {
+	f := newFixture(t)
+	mustStatus(t, f.get(t, "/v1/anomaly/events"), http.StatusOK)
+}
+
+// ─── Auth refresh ─────────────────────────────────────────────────────────────
+
+func TestAuthRefresh_AuthDisabled_NotFound(t *testing.T) {
+	f := newFixture(t)
+	resp := f.post(t, "/v1/auth/refresh", map[string]string{"token": "anything"})
+	// auth disabled → 404
+	mustStatus(t, resp, http.StatusNotFound)
 }

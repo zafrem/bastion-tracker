@@ -38,5 +38,10 @@ cd ui && npm install && npm run build
 - [Design Document](DESIGN.md)
 - [SRS Document](bastion_tracker_srs_v1.0_en.md)
 
+**Technical deep-dives (code-based):**
+- [Lineage Tracking](docs/lineage-tracking.md)
+- [Honey-Token Injection](docs/honey-token-injection.md)
+- [Management Features](docs/management-features.md)
+
 ## License
 Apache License 2.0
