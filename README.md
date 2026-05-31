@@ -1,12 +1,12 @@
 # Bastion-Tracker (Module D)
 
 ## Overview
-**Bastion-Tracker** is the central observability and governance module for the Bastion framework. It provides real-time visualization of request flows, immutable audit logging, and honey-token intrusion detection.
+**Bastion-Tracker** is the central observability and governance module for the Bastion-RAG framework. It provides real-time visualization of request flows, immutable audit logging, and honey-token intrusion detection.
 
 Tracker acts as the "control center" for the entire RAG pipeline, allowing operators to monitor system health and security events across all modules.
 
 ## Key Features
-- **Real-time Flow Visualization:** Live animation of requests moving through Bastion modules (Sentinel, Vault, Navigator, Anchor).
+- **Real-time Flow Visualization:** Live animation of requests moving through Bastion-RAG modules (Sentinel, Vault, Navigator, Anchor).
 - **System Topology:** Graphical representation of module health and connectivity.
 - **Audit Logging:** Secure, structured storage of all security-relevant events.
 - **Honey-token Detection:** Management and monitoring of decoy data to detect unauthorized access.

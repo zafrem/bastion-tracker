@@ -1,6 +1,6 @@
 # Bastion-Tracker Module SRS
 
-**Project:** Bastion - RAG Security Governance Framework
+**Project:** Bastion-RAG - RAG Security Governance Framework
 **Document Type:** Module SRS (Tier 2)
 **Document ID:** 14-tracker-srs
 **Module:** D - Tracker (Observability & Visualization)
@@ -20,7 +20,7 @@
 
 ### 1.1 Purpose
 
-This document specifies the **Tracker** module, the observability and visualization layer of Bastion. Unlike data-path modules (Sentinel/Vault/Navigator/Anchor), Tracker is a **cross-cutting observer** — it watches the entire pipeline without touching data flow.
+This document specifies the **Tracker** module, the observability and visualization layer of Bastion-RAG. Unlike data-path modules (Sentinel/Vault/Navigator/Anchor), Tracker is a **cross-cutting observer** — it watches the entire pipeline without touching data flow.
 
 ### 1.2 What Changed in v3
 
@@ -133,7 +133,7 @@ Answer: YES
 ├─────────────────────────────────────────────┤
 │  ┌──────────────────────────────┐            │
 │  │  Event Collector (NATS sub)  │            │
-│  │  Subscribes: bastion.events.>│            │
+│  │  Subscribes: bastion-rag.events.>│            │
 │  └────────────┬─────────────────┘            │
 │               ▼                              │
 │  ┌──────────────────────────────┐            │
@@ -164,7 +164,7 @@ User → Sentinel(Go) → Vault(Go) → Navigator(Py) → Anchor(Py) → LLM →
          ▼                ▼              ▼               ▼
         ┌─────────────────────────────────────────────────┐
         │               NATS Event Bus                     │
-        │   bastion.events.{module}.{event_type}           │
+        │   bastion-rag.events.{module}.{event_type}           │
         │   JSON payload — same format regardless of lang  │
         └──────────────────────┬──────────────────────────┘
                                ▼
@@ -230,7 +230,7 @@ Note: Tracker's failure must NOT affect data path
 
 **FR-CORE-EC-001: NATS Subscription**
 ```
-Subscribe: bastion.events.>
+Subscribe: bastion-rag.events.>
 Handle: 10,000+ events/s
 Per Foundation event schema (02)
 Dependency: NATS only
@@ -367,7 +367,7 @@ Detail: see Honey-Token SRS (Tier 3).
 
 **Brief Contract:**
 ```
-Subscribes: bastion.events.*.honey_token_*
+Subscribes: bastion-rag.events.*.honey_token_*
 
 On correlated detection (same trace_id across layers):
 → High confidence breach
@@ -435,7 +435,7 @@ Other modules emit; Tracker correlates.
 ### 6.1 Input: Event Subscription (NATS)
 
 ```
-Subscribe: bastion.events.>
+Subscribe: bastion-rag.events.>
 Per Foundation event schema (02)
 All modules publish (Go and Python); Tracker consumes.
 ```
@@ -444,7 +444,7 @@ All modules publish (Go and Python); Tracker consumes.
 
 ```
 Wire format: JSON-over-gRPC (Go encoding.RegisterCodec JSONCodec)
-Service: bastion.tracker.v1.TrackerService
+Service: bastion-rag.tracker.v1.TrackerService
 
 Methods:
   SubmitEvent(BastionEvent) → Ack
@@ -560,7 +560,7 @@ NFR-IND-003: Core works standalone (NATS+PostgreSQL)
          ↑ events (JSON, language-agnostic)
   ┌──────────────────────┐
   │    NATS Event Bus     │
-  │  bastion.events.>     │
+  │  bastion-rag.events.>     │
   └────┬──────────────────┘
        │
   ┌────┴───────────────────────────────┐
@@ -580,7 +580,7 @@ Ports: REST :8084 | gRPC :9094 | WebSocket :8084/ws
 
 ```
 [tracker] starting v3.0 (REST :8084, gRPC :9094)
-[tracker] NATS connected — subscribing bastion.events.>
+[tracker] NATS connected — subscribing bastion-rag.events.>
 [tracker] PostgreSQL connected
 [tracker] no module events yet (waiting)
 [tracker] core: FULLY OPERATIONAL
@@ -636,7 +636,7 @@ server:
 core:
   nats:
     url: nats://nats:4222
-    subjects: ["bastion.events.>"]
+    subjects: ["bastion-rag.events.>"]
   storage:
     postgresql: postgresql://postgres:5432/tracker
     retention_days: 30
