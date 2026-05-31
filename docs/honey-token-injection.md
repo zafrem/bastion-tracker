@@ -482,7 +482,7 @@ Response:
 
    Processor logs: "[processor] honey-token triggered: HT-0003 (event=...)"
    pub.Publish(EventHoneyTokenAlert("HT-0003", "HT-0003-trg-...", "acme-corp", "trace-xyz-789"))
-   → bastion.events.tracker.honey_token_alert (critical, async)
+   → bastion-rag.events.tracker.honey_token_alert (critical, async)
 
    Step 9: incidents.AutoCreate(ev):
      title = "Honey-token search-layer retrieval (Navigator): HT-0003"
@@ -523,7 +523,7 @@ NATS → Tracker processor.Process()
     │     ├── Extract token_id from Data
     │     ├── store.RecordTrigger() → TriggerCount++, LastTriggered
     │     └── return tokenID
-    ├── pub.Publish(EventHoneyTokenAlert)  → NATS: bastion.events.tracker.honey_token_alert
+    ├── pub.Publish(EventHoneyTokenAlert)  → NATS: bastion-rag.events.tracker.honey_token_alert
     ├── Step 9: incidents.AutoCreate() → INC-XXXX (status: open)
     │     └── hub.Broadcast({type:"incident"})  → WebSocket clients
     └── Step 11: hub.Broadcast({type:"event"})  → WebSocket clients

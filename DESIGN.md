@@ -1,13 +1,13 @@
 # Bastion-Tracker Design Document
 
 ## 1. Introduction
-Tracker is Module D of the Bastion framework, providing comprehensive observability and audit capabilities. It ensures transparency and accountability by tracking every request through the RAG pipeline.
+Tracker is Module D of the Bastion-RAG framework, providing comprehensive observability and audit capabilities. It ensures transparency and accountability by tracking every request through the RAG pipeline.
 
 ## 2. System Architecture
 
 ### 2.1 Component Overview
 ```
-  [Bastion Modules (A,B,C,E)]
+  [Bastion-RAG Modules (A,B,C,E)]
              |
              v (NATS / gRPC / REST)
       [Event Collector]

@@ -593,8 +593,8 @@ func (p *Publisher) Publish(ev TrackerEvent) {
         data, err := json.Marshal(ev)
         if err != nil { return }
         subject := fmt.Sprintf("%s.%s", subjectPfx, ev.EventType)
-        // bastion.events.tracker.incident_created
-        // bastion.events.tracker.honey_token_alert
+        // bastion-rag.events.tracker.incident_created
+        // bastion-rag.events.tracker.honey_token_alert
         // etc.
         _ = p.nc.Publish(subject, data)
     }()
