@@ -252,6 +252,9 @@ svg.pipeline { width: 100%; display: block; }
     <span>🎬</span><span class="nav-label">Demo</span>
   </a>
   <div class="nav-sep"></div>
+  <a class="nav-item" data-page="users" onclick="navigate('users',event)">
+    <span>👤</span><span class="nav-label">Users</span>
+  </a>
   <a class="nav-item" data-page="settings" onclick="navigate('settings',event)">
     <span>⚙</span><span class="nav-label">Settings</span>
   </a>
@@ -660,6 +663,26 @@ svg.pipeline { width: 100%; display: block; }
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════ USERS ══ -->
+  <div class="page" id="page-users">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div class="page-header">Users</div>
+        <div class="page-sub">Manage operator accounts and roles (admin only)</div>
+      </div>
+      <button class="btn primary" onclick="openCreateUser()">+ Add User</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Accounts</span><button class="btn btn-sm" onclick="loadUsers()">Refresh</button></div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Name</th><th>Role</th><th>Created</th><th>Updated</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody"><tr><td colspan="5"><div class="empty">Loading…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /page-area -->
 </div><!-- /app -->
 
@@ -706,6 +729,31 @@ svg.pipeline { width: 100%; display: block; }
     <div class="form-actions">
       <button class="btn" onclick="closeModal('modal-create-token')">Cancel</button>
       <button class="btn primary" onclick="submitCreateToken()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create user modal -->
+<div class="modal-backdrop" id="modal-create-user" onclick="closeOnBackdrop(event,'modal-create-user')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Add User</div>
+      <button class="modal-close" onclick="closeModal('modal-create-user')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Name *</label><input type="text" id="usr-name" placeholder="jane"></div>
+      <div class="field"><label>Password *</label><input type="password" id="usr-pass" placeholder="••••••••"></div>
+      <div class="field"><label>Role</label>
+        <select id="usr-role">
+          <option value="viewer">viewer</option>
+          <option value="operator">operator</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeModal('modal-create-user')">Cancel</button>
+      <button class="btn primary" onclick="submitCreateUser()">Create</button>
     </div>
   </div>
 </div>
@@ -785,6 +833,7 @@ function activatePage(page) {
   else if (page === 'security') { loadAlerts(); loadIncidents(); loadSecEvents(); loadRunBooks(); }
   else if (page === 'audit') {}
   else if (page === 'honey') loadHoney();
+  else if (page === 'users') loadUsers();
   else if (page === 'demo') { loadScenarios(); checkRecStatus(); }
   else if (page === 'settings') { loadHealth(); loadDeadLetters(); }
 }
@@ -1263,6 +1312,72 @@ async function deleteToken(id) {
   await api('/v1/honey-tokens/'+id, 'DELETE');
   toast('Token deleted', 'info');
   loadHoney();
+}
+
+// ══════════════════════════════════════════════════ USERS ══
+async function loadUsers() {
+  const data = await api('/v1/users');
+  const list = Array.isArray(data) ? data : [];
+  const tbody = document.getElementById('users-tbody');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty">No users to show. If auth is enabled, an admin token is required.</div></td></tr>';
+    return;
+  }
+  const roles = ['viewer','operator','admin'];
+  tbody.innerHTML = list.map(u => {
+    const created = u.created_at ? new Date(u.created_at).toLocaleString() : '—';
+    const updated = u.updated_at ? new Date(u.updated_at).toLocaleString() : '—';
+    const opts = roles.map(r => `<option value="${r}"${r === u.role ? ' selected' : ''}>${r}</option>`).join('');
+    return `<tr>
+      <td style="font-weight:600">${u.name}</td>
+      <td><select onchange="changeUserRole('${u.name}', this.value)">${opts}</select></td>
+      <td style="font-size:11px;color:var(--muted)">${created}</td>
+      <td style="font-size:11px;color:var(--muted)">${updated}</td>
+      <td><div class="btn-group"><button class="btn btn-sm danger" onclick="deleteUser('${u.name}')">Delete</button></div></td>
+    </tr>`;
+  }).join('');
+}
+
+function openCreateUser() {
+  ['usr-name','usr-pass'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('usr-role').value = 'viewer';
+  openModal('modal-create-user');
+}
+
+async function submitCreateUser() {
+  const name = document.getElementById('usr-name').value.trim();
+  const password = document.getElementById('usr-pass').value;
+  if (!name || !password) { toast('Name and password are required', 'error'); return; }
+  const body = { name, password, role: document.getElementById('usr-role').value };
+  const r = await apiRaw('/v1/users', 'POST', body);
+  if (r.ok) {
+    toast('User created', 'info');
+    closeModal('modal-create-user');
+    loadUsers();
+  } else {
+    toast(await errMsg(r, 'Failed to create user'), 'error');
+  }
+}
+
+async function changeUserRole(name, role) {
+  const r = await apiRaw('/v1/users/' + encodeURIComponent(name), 'PATCH', { role });
+  if (r.ok) toast('Role updated for ' + name, 'info');
+  else toast(await errMsg(r, 'Failed to update role'), 'error');
+  loadUsers();
+}
+
+async function deleteUser(name) {
+  if (!confirm('Delete user "' + name + '"? This cannot be undone.')) return;
+  const r = await apiRaw('/v1/users/' + encodeURIComponent(name), 'DELETE');
+  if (r.ok) toast('User deleted', 'info');
+  else toast(await errMsg(r, 'Failed to delete user'), 'error');
+  loadUsers();
+}
+
+// errMsg extracts a JSON {error} message from a failed response, falling back to def.
+async function errMsg(r, def) {
+  try { const j = await r.json(); if (j && j.error) return j.error; } catch {}
+  return def;
 }
 
 async function viewTriggers(id, name) {

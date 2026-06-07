@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/bastion/tracker/internal/processor"
 	"github.com/bastion/tracker/internal/runbook"
 	"github.com/bastion/tracker/internal/store"
+	"github.com/bastion/tracker/internal/users"
 )
 
 //go:embed static
@@ -55,6 +57,13 @@ func New(
 	rec := demo.NewRecorder()
 	proc.AddHook(rec.Record)
 
+	// Runtime user store, seeded from the configured user list (nil-safe).
+	var seedUsers []config.UserConfig
+	if authCfg != nil {
+		seedUsers = authCfg.Users
+	}
+	userMgr := users.New(seedUsers)
+
 	hh := &handlers{
 		store:     s,
 		hub:       h,
@@ -69,6 +78,7 @@ func New(
 		signer:    signer,
 		mon:       mon,
 		anomaly:   anomalyDet,
+		users:     userMgr,
 	}
 	srv := &Server{port: port}
 	srv.httpServer = &http.Server{
@@ -168,6 +178,13 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 		r.With(adminOrOpen(authCfg)).Get("/v1/events/export", h.ExportEvents)
 		r.With(adminOrOpen(authCfg)).Get("/v1/auth/login-audit", h.LoginAudit)
 
+		// User management — admin only
+		r.With(adminOrOpen(authCfg)).Get("/v1/users", h.ListUsers)
+		r.With(adminOrOpen(authCfg)).Post("/v1/users", h.CreateUser)
+		r.With(adminOrOpen(authCfg)).Get("/v1/users/{name}", h.GetUser)
+		r.With(adminOrOpen(authCfg)).Patch("/v1/users/{name}", h.UpdateUser)
+		r.With(adminOrOpen(authCfg)).Delete("/v1/users/{name}", h.DeleteUser)
+
 		// Anomaly detection — viewer GET / operator POST
 		r.Get("/v1/anomaly/baselines", h.AnomalyBaselines)
 		r.Get("/v1/anomaly/events", h.AnomalyEvents)
@@ -242,8 +259,14 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 	// WebSocket (public — auth enforced at application level if needed).
 	r.Get("/ws/events", ws.ServeWS)
 
-	// Embedded static UI.
-	r.Handle("/*", http.FileServer(http.FS(staticFS)))
+	// Embedded static UI. Strip the "static" embed prefix so the dashboard
+	// (static/index.html) is served at "/" rather than "/static/".
+	staticRoot, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		// Embedded at build time; a failure here is a programmer error.
+		panic(fmt.Sprintf("rest: embed static sub: %v", err))
+	}
+	r.Handle("/*", http.FileServer(http.FS(staticRoot)))
 
 	return r
 }

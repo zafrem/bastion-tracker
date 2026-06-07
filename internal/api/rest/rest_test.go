@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -816,4 +817,22 @@ func TestAuthRefresh_AuthDisabled_NotFound(t *testing.T) {
 	resp := f.post(t, "/v1/auth/refresh", map[string]string{"token": "anything"})
 	// auth disabled → 404
 	mustStatus(t, resp, http.StatusNotFound)
+}
+
+// ─── Embedded static UI ────────────────────────────────────────────────────────
+
+// The dashboard must be served at "/" — not "/static/". This guards against the
+// embed FS being mounted without stripping the "static" prefix, which makes "/"
+// return a directory listing instead of the Control Center.
+func TestStaticUI_ServedAtRoot(t *testing.T) {
+	f := newFixture(t)
+	w := f.get(t, "/")
+	mustStatus(t, w, http.StatusOK)
+	body := w.Body.String()
+	if !strings.Contains(body, "Bastion Control Center") {
+		t.Fatalf("GET / did not serve the dashboard; body starts with: %.120q", body)
+	}
+	if strings.Contains(body, `href="static/"`) {
+		t.Fatal("GET / served a directory listing instead of index.html")
+	}
 }
