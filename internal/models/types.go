@@ -17,22 +17,22 @@ type BastionEvent struct {
 	TraceID        string            `json:"trace_id"`
 	SpanID         string            `json:"span_id"`
 	ParentSpanID   string            `json:"parent_span_id"`
-	Module         string            `json:"module"`           // sentinel, vault, navigator, anchor
+	Module         string            `json:"module"` // sentinel, vault, navigator, anchor
 	ModuleVersion  string            `json:"module_version,omitempty"`
 	EventType      string            `json:"event_type"`
-	Severity       string            `json:"severity"`         // info, warning, error, critical
+	Severity       string            `json:"severity"`           // info, warning, error, critical
 	Category       string            `json:"category,omitempty"` // operational, security, performance, audit
-	Timestamp      time.Time         `json:"-"`                // populated by UnmarshalJSON
+	Timestamp      time.Time         `json:"-"`                  // populated by UnmarshalJSON
 	TenantID       string            `json:"tenant_id"`
 	UserID         string            `json:"user_id"`
 	RequestID      string            `json:"request_id"`
 	Labels         map[string]string `json:"labels,omitempty"`
 	Data           map[string]any    `json:"data,omitempty"`
-	PipelineType   string            `json:"pipeline_type"`    // full, lite, minimal, custom
+	PipelineType   string            `json:"pipeline_type"` // full, lite, minimal, custom
 	ModulesUsed    []string          `json:"modules_used,omitempty"`
 	ModulesSkipped []string          `json:"modules_skipped,omitempty"`
 	DurationMs     int64             `json:"duration_ms"`
-	Status         string            `json:"status"`           // passed, blocked, error
+	Status         string            `json:"status"` // passed, blocked, error
 	ActionTaken    string            `json:"action_taken,omitempty"`
 	Signature      string            `json:"signature,omitempty"` // HMAC-SHA256 audit integrity seal
 }
@@ -118,7 +118,7 @@ type TimelineEntry struct {
 	SpanID     string `json:"span_id"`
 	Module     string `json:"module"`
 	EventType  string `json:"event_type"`
-	OffsetMs   int64  `json:"offset_ms"`   // ms after trace start
+	OffsetMs   int64  `json:"offset_ms"` // ms after trace start
 	DurationMs int64  `json:"duration_ms"`
 	Status     string `json:"status"`
 }
@@ -315,9 +315,9 @@ type ErrorResponse struct {
 type AuditVerifyResult struct {
 	Total    int      `json:"total"`
 	Valid    int      `json:"valid"`
-	Invalid  int      `json:"invalid"`   // signature present but wrong
-	Unsigned int      `json:"unsigned"`  // no signature field
-	Tampered []string `json:"tampered"`  // event_ids with bad signatures
+	Invalid  int      `json:"invalid"`  // signature present but wrong
+	Unsigned int      `json:"unsigned"` // no signature field
+	Tampered []string `json:"tampered"` // event_ids with bad signatures
 }
 
 // LoginRequest is the body for POST /v1/auth/login.
@@ -331,6 +331,22 @@ type LoginResponse struct {
 	Token     string `json:"token"`
 	ExpiresIn string `json:"expires_in"`
 	Role      string `json:"role"`
+}
+
+// ─── User management ────────────────────────────────────────────────────────
+
+// CreateUserRequest is the body for POST /v1/users (admin only).
+type CreateUserRequest struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+// UpdateUserRequest is the body for PATCH /v1/users/{name} (admin only).
+// Either or both fields may be set; empty fields are left unchanged.
+type UpdateUserRequest struct {
+	Role     string `json:"role,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 // ─── Lineage ──────────────────────────────────────────────────────────────────
@@ -367,7 +383,7 @@ type LineageSourcesResponse struct {
 
 // IncidentRequest queries incidents with optional filters.
 type IncidentRequest struct {
-	Status   string `json:"status,omitempty"`    // open, investigating, resolved
+	Status   string `json:"status,omitempty"` // open, investigating, resolved
 	TenantID string `json:"tenant_id,omitempty"`
 	Limit    int    `json:"limit,omitempty"`
 }
@@ -400,12 +416,12 @@ type DashboardSummary struct {
 
 // PipelineHealthEntry is one module's health in the pipeline health view.
 type PipelineHealthEntry struct {
-	Module      string     `json:"module"`
-	Status      string     `json:"status"`
-	AvgLatencyMs float64   `json:"avg_latency_ms"`
-	ErrorRate   float64    `json:"error_rate"`
-	EventsPerMin float64   `json:"events_per_min"`
-	LastEventAt *time.Time `json:"last_event_at,omitempty"`
+	Module       string     `json:"module"`
+	Status       string     `json:"status"`
+	AvgLatencyMs float64    `json:"avg_latency_ms"`
+	ErrorRate    float64    `json:"error_rate"`
+	EventsPerMin float64    `json:"events_per_min"`
+	LastEventAt  *time.Time `json:"last_event_at,omitempty"`
 }
 
 // PipelineHealthResponse is returned by GET /v1/dashboard/pipeline-health.
@@ -416,13 +432,13 @@ type PipelineHealthResponse struct {
 
 // TenantActivity is returned by GET /v1/dashboard/tenant/{tenant_id}.
 type TenantActivity struct {
-	TenantID             string           `json:"tenant_id"`
-	EventCount1h         int64            `json:"event_count_1h"`
-	IncidentCount        int              `json:"incident_count"`
-	BlockedCount1h       int64            `json:"blocked_count_1h"`
-	HoneyTokenTriggers   int              `json:"honey_token_triggers"`
-	CategoryBreakdown    map[string]int64 `json:"category_breakdown"`
-	UpdatedAt            time.Time        `json:"updated_at"`
+	TenantID           string           `json:"tenant_id"`
+	EventCount1h       int64            `json:"event_count_1h"`
+	IncidentCount      int              `json:"incident_count"`
+	BlockedCount1h     int64            `json:"blocked_count_1h"`
+	HoneyTokenTriggers int              `json:"honey_token_triggers"`
+	CategoryBreakdown  map[string]int64 `json:"category_breakdown"`
+	UpdatedAt          time.Time        `json:"updated_at"`
 }
 
 // EventsPage is a cursor-paginated list of events.
@@ -439,7 +455,7 @@ type AnomalyBaseline struct {
 	Module      string    `json:"module"`
 	EventType   string    `json:"event_type"`
 	WindowH     int       `json:"window_h"`
-	Mean        float64   `json:"mean"`   // events/minute
+	Mean        float64   `json:"mean"` // events/minute
 	StdDev      float64   `json:"std_dev"`
 	SigmaThresh float64   `json:"sigma_threshold"` // default 3.0
 	LastUpdated time.Time `json:"last_updated"`

@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/bastion/tracker/internal/alerts"
 	"github.com/bastion/tracker/internal/anomaly"
@@ -26,6 +24,7 @@ import (
 	"github.com/bastion/tracker/internal/processor"
 	"github.com/bastion/tracker/internal/runbook"
 	"github.com/bastion/tracker/internal/store"
+	"github.com/bastion/tracker/internal/users"
 )
 
 type handlers struct {
@@ -40,8 +39,9 @@ type handlers struct {
 	authCfg   *config.AuthConfig
 	recorder  *demo.Recorder
 	runbooks  *runbook.Manager
-	signer    *audit.Signer   // for audit verification endpoint
+	signer    *audit.Signer    // for audit verification endpoint
 	mon       *monitor.Manager // pipeline monitoring mode
+	users     *users.Manager   // runtime user management
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -56,26 +56,9 @@ func (h *handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var matched *config.UserConfig
-	for i := range h.authCfg.Users {
-		if h.authCfg.Users[i].Name == req.Username {
-			matched = &h.authCfg.Users[i]
-			break
-		}
-	}
-	if matched == nil {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-
-	// Support both bcrypt hashes ($2a$...) and plain-text (PoC mode).
-	var passwordOK bool
-	if strings.HasPrefix(matched.Password, "$2") {
-		passwordOK = bcrypt.CompareHashAndPassword([]byte(matched.Password), []byte(req.Password)) == nil
-	} else {
-		passwordOK = matched.Password == req.Password
-	}
-	if !passwordOK {
+	// Verify against the runtime user store (seeded from config at startup).
+	role, ok := h.users.Verify(req.Username, req.Password)
+	if !ok {
 		h.loginAuditRecord(req.Username, "", r.RemoteAddr, false, "invalid credentials")
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -85,16 +68,16 @@ func (h *handlers) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		expiry = auth.DefaultExpiry
 	}
-	token, err := auth.GenerateToken(matched.Name, matched.Role, h.authCfg.JWTSecret, expiry)
+	token, err := auth.GenerateToken(req.Username, role, h.authCfg.JWTSecret, expiry)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "token generation failed")
 		return
 	}
-	h.loginAuditRecord(matched.Name, matched.Role, r.RemoteAddr, true, "")
+	h.loginAuditRecord(req.Username, role, r.RemoteAddr, true, "")
 	writeJSON(w, http.StatusOK, models.LoginResponse{
 		Token:     token,
 		ExpiresIn: expiry.String(),
-		Role:      matched.Role,
+		Role:      role,
 	})
 }
 
@@ -623,8 +606,8 @@ func (h *handlers) MonitorGetMode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"mode":               string(mode),
-		"active_sessions":    active,
+		"mode":                string(mode),
+		"active_sessions":     active,
 		"pending_checkpoints": pending,
 		"modes": map[string]string{
 			"off":     "Monitoring disabled. No overhead.",
