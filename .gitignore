@@ -33,3 +33,7 @@ go.work.sum
 
 # Compiled binaries (reproducible via `go build`)
 bin/
+
+# OS junk
+.DS_Store
+Thumbs.db
