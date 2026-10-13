@@ -5,6 +5,7 @@
 package users
 
 import (
+	"crypto/subtle"
 	"errors"
 	"sort"
 	"strings"
@@ -125,7 +126,7 @@ func (m *Manager) Verify(name, password string) (role string, ok bool) {
 		}
 		return "", false
 	}
-	if r.secret == password {
+	if subtle.ConstantTimeCompare([]byte(r.secret), []byte(password)) == 1 {
 		return r.role, true
 	}
 	return "", false

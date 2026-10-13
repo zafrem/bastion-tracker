@@ -182,6 +182,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
+	if err := cfg.ValidateSecurity(); err != nil {
+		return fmt.Errorf("refusing to start: %w (or set dev_mode: true for local demos)", err)
+	}
+	if cfg.DevMode {
+		log.Println("[security] dev_mode enabled: built-in keys/seed users allowed — do not use in production")
+	}
 
 	s, h, proc, demoEng, al, inc, ht, signer, mon, anomalyDet := buildComponents(cfg)
 
@@ -203,7 +209,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 		proc.SetPublisher(pub)
 	}
 
-	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort)
+	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort,
+		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy))
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
 
 	go al.StartBackgroundTasks(ctx)
@@ -244,7 +251,8 @@ func runDemoServer(cmd *cobra.Command, args []string) error {
 	cfg := config.Defaults()
 	s, h, proc, demoEng, al, inc, ht, signer, mon, anomalyDet := buildComponents(cfg)
 
-	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort)
+	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort,
+		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

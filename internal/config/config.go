@@ -2,7 +2,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,6 +24,9 @@ type Config struct {
 	BypassMonitor BypassMonitorConfig `yaml:"bypass_monitor"`
 	Monitor       MonitorConfig       `yaml:"monitor"`
 	Anomaly       AnomalyConfig       `yaml:"anomaly"`
+	// DevMode skips ValidateSecurity so the demo runs with built-in keys and
+	// seed users. Never enable in production.
+	DevMode bool `yaml:"dev_mode"`
 }
 
 // AnomalyConfig controls the statistical and pattern-based anomaly detector.
@@ -65,6 +70,12 @@ type ServerConfig struct {
 	GRPCPort      int `yaml:"grpc_port"`
 	WebSocketPort int `yaml:"websocket_port"`
 	UIPort        int `yaml:"ui_port"`
+	// CORSAllowedOrigins lists browser origins allowed to call the REST API.
+	// Empty (default) sends no CORS headers; "*" allows any origin.
+	CORSAllowedOrigins []string `yaml:"cors_allowed_origins"`
+	// TrustProxy honours X-Forwarded-For / X-Real-IP for the client address.
+	// Enable only when Tracker sits behind a proxy that sets them.
+	TrustProxy bool `yaml:"trust_proxy"`
 }
 
 type NATSConfig struct {
@@ -77,7 +88,7 @@ type StorageConfig struct {
 	PostgreSQLURL   string `yaml:"postgresql_url"`
 	RetentionDays   int    `yaml:"retention_days"`
 	MaxEventsMemory int    `yaml:"max_events_memory"`
-	AuditSecret     string `yaml:"audit_secret"` // HMAC key for event signing; uses built-in demo key if empty
+	AuditSecret     string `yaml:"audit_secret"` // HMAC key for event signing (>=32 bytes; env TRACKER_AUDIT_SECRET); required unless dev_mode
 }
 
 type RealtimeConfig struct {
@@ -214,7 +225,7 @@ func Defaults() *Config {
 		},
 		Auth: AuthConfig{
 			Enabled:       false, // off by default; enable in config.yaml
-			JWTSecret:     "change-me-in-production",
+			JWTSecret:     "", // required when auth is enabled (>=32 bytes; env TRACKER_JWT_SECRET)
 			JWTExpiry:     "8h",
 			RefreshExpiry: "168h",
 			RequireBcrypt: false, // flip to true in production
@@ -248,11 +259,45 @@ func Defaults() *Config {
 }
 
 // Load reads a YAML config file, falling back to defaults for missing fields.
+// TRACKER_AUDIT_SECRET and TRACKER_JWT_SECRET override the corresponding keys.
 func Load(path string) (*Config, error) {
 	cfg := Defaults()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return cfg, nil
+	if data, err := os.ReadFile(path); err == nil {
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return cfg, err
+		}
 	}
-	return cfg, yaml.Unmarshal(data, cfg)
+	if v := os.Getenv("TRACKER_AUDIT_SECRET"); v != "" {
+		cfg.Storage.AuditSecret = v
+	}
+	if v := os.Getenv("TRACKER_JWT_SECRET"); v != "" {
+		cfg.Auth.JWTSecret = v
+	}
+	return cfg, nil
+}
+
+const minSecretLen = 32
+
+// ValidateSecurity refuses insecure configurations: a missing or weak audit
+// HMAC key (which would make the audit log forgeable), and, when auth is on,
+// a missing/placeholder JWT secret or plaintext user passwords. dev_mode skips it.
+func (c *Config) ValidateSecurity() error {
+	if c.DevMode {
+		return nil
+	}
+	if len(c.Storage.AuditSecret) < minSecretLen {
+		return fmt.Errorf("storage.audit_secret must be set to at least %d bytes (env TRACKER_AUDIT_SECRET); without it audit signatures use a public key and are forgeable", minSecretLen)
+	}
+	if !c.Auth.Enabled {
+		return nil
+	}
+	if s := c.Auth.JWTSecret; len(s) < minSecretLen || s == "change-me-in-production" {
+		return fmt.Errorf("auth.jwt_secret must be a unique value of at least %d bytes (env TRACKER_JWT_SECRET)", minSecretLen)
+	}
+	for _, u := range c.Auth.Users {
+		if !strings.HasPrefix(u.Password, "$2") {
+			return fmt.Errorf("auth.users[%q]: password must be a bcrypt hash when auth is enabled", u.Name)
+		}
+	}
+	return nil
 }

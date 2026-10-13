@@ -1,6 +1,14 @@
 version: "3.0"
 
+# Security: the server refuses to start unless storage.audit_secret (>=32 bytes) is set,
+# and, when auth.enabled, auth.jwt_secret (>=32 bytes) and bcrypt-hashed user passwords.
+# Prefer env vars TRACKER_AUDIT_SECRET / TRACKER_JWT_SECRET over writing secrets here.
+# dev_mode: true skips these checks for local demos only.
+dev_mode: false
+
 server:
+  # cors_allowed_origins: ["https://ops.example.com"]   # empty = no CORS headers
+  # trust_proxy: false                                    # true only behind a proxy that sets X-Forwarded-For
   rest_port: 8080
   grpc_port: 9090
   websocket_port: 8081
@@ -16,6 +24,7 @@ storage:
   postgresql_url: ""          # empty = in-memory (PoC mode)
   retention_days: 30
   max_events_memory: 10000
+  audit_secret: ""            # REQUIRED (>=32 bytes) unless dev_mode; or set TRACKER_AUDIT_SECRET
 
 realtime:
   max_connections: 1000

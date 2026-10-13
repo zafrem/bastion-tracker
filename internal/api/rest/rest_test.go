@@ -37,7 +37,7 @@ type testFixture struct {
 	proc    *processor.Processor
 }
 
-func newFixture(t *testing.T) *testFixture {
+func newFixture(t *testing.T, opts ...Option) *testFixture {
 	t.Helper()
 	s := store.New(1000)
 	h := hub.New(64)
@@ -58,7 +58,7 @@ func newFixture(t *testing.T) *testFixture {
 	proc.AddHook(func(ev models.BastionEvent) { mon.ObserveEvent(ev) })
 
 	// Auth disabled (authCfg = nil).
-	srv := New(s, h, proc, demoEng, al, inc, ht, nil, signer, mon, nil, 0)
+	srv := New(s, h, proc, demoEng, al, inc, ht, nil, signer, mon, nil, 0, opts...)
 	return &testFixture{
 		handler: srv.httpServer.Handler,
 		store:   s,

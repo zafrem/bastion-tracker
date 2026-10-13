@@ -37,6 +37,67 @@ var staticFS embed.FS
 type Server struct {
 	httpServer *http.Server
 	port       int
+	opts       options
+}
+
+type options struct {
+	corsOrigins []string
+	trustProxy  bool
+}
+
+// Option customises the REST server.
+type Option func(*options)
+
+// WithCORSOrigins sets the browser origins allowed by CORS ("*" = any).
+// With no origins, no CORS headers are sent.
+func WithCORSOrigins(origins []string) Option {
+	return func(o *options) { o.corsOrigins = origins }
+}
+
+// WithTrustProxy makes the server honour X-Forwarded-For / X-Real-IP.
+func WithTrustProxy(trust bool) Option {
+	return func(o *options) { o.trustProxy = trust }
+}
+
+// clientIPMiddleware rewrites RemoteAddr from forwarding headers only when the
+// deployment declares a trusted proxy; otherwise clients could spoof their IP.
+func clientIPMiddleware(trustProxy bool) func(http.Handler) http.Handler {
+	if trustProxy {
+		return middleware.RealIP
+	}
+	return func(next http.Handler) http.Handler { return next }
+}
+
+// corsMiddleware echoes the request Origin only when it is allow-listed.
+func corsMiddleware(allowed []string) func(http.Handler) http.Handler {
+	allowAny := false
+	set := make(map[string]bool, len(allowed))
+	for _, o := range allowed {
+		if o == "*" {
+			allowAny = true
+		}
+		set[o] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			origin := req.Header.Get("Origin")
+			if origin != "" && (allowAny || set[origin]) {
+				if allowAny {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Add("Vary", "Origin")
+				}
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				if req.Method == http.MethodOptions {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+			}
+			next.ServeHTTP(w, req)
+		})
+	}
 }
 
 // New constructs a Server with all routes wired up.
@@ -53,6 +114,7 @@ func New(
 	mon *monitor.Manager,
 	anomalyDet *anomaly.Detector,
 	port int,
+	opts ...Option,
 ) *Server {
 	rec := demo.NewRecorder()
 	proc.AddHook(rec.Record)
@@ -81,6 +143,9 @@ func New(
 		users:     userMgr,
 	}
 	srv := &Server{port: port}
+	for _, o := range opts {
+		o(&srv.opts)
+	}
 	srv.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		Handler:      srv.routes(hh, h, authCfg),
@@ -111,24 +176,13 @@ func (s *Server) Done() <-chan struct{} {
 func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(clientIPMiddleware(s.opts.trustProxy))
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(10 * time.Second))
 
-	// CORS for local dev.
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			if req.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			next.ServeHTTP(w, req)
-		})
-	})
+	// CORS: allow-list only (empty = no CORS headers).
+	r.Use(corsMiddleware(s.opts.corsOrigins))
 
 	// Public routes (no auth required).
 	r.Get("/v1/health", h.Health)
