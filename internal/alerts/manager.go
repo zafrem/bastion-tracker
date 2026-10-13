@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bastion/tracker/internal/config"
-	"github.com/bastion/tracker/internal/metrics"
-	"github.com/bastion/tracker/internal/models"
-	"github.com/bastion/tracker/internal/notify"
-	"github.com/bastion/tracker/internal/store"
+	"github.com/zafrem/bastion-tracker/internal/config"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
+	"github.com/zafrem/bastion-tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/notify"
+	"github.com/zafrem/bastion-tracker/internal/store"
 )
 
 // Manager evaluates configurable alert rules and dispatches notifications.

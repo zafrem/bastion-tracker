@@ -15,7 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 var baseURL string

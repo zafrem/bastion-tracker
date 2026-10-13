@@ -13,17 +13,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bastion/tracker/internal/alerts"
-	"github.com/bastion/tracker/internal/audit"
-	"github.com/bastion/tracker/internal/demo"
-	"github.com/bastion/tracker/internal/honeytoken"
-	"github.com/bastion/tracker/internal/hub"
-	"github.com/bastion/tracker/internal/incidents"
-	"github.com/bastion/tracker/internal/models"
-	"github.com/bastion/tracker/internal/monitor"
-	"github.com/bastion/tracker/internal/processor"
-	"github.com/bastion/tracker/internal/store"
-	"github.com/bastion/tracker/internal/validator"
+	"github.com/zafrem/bastion-tracker/internal/alerts"
+	"github.com/zafrem/bastion-tracker/internal/audit"
+	"github.com/zafrem/bastion-tracker/internal/demo"
+	"github.com/zafrem/bastion-tracker/internal/honeytoken"
+	"github.com/zafrem/bastion-tracker/internal/hub"
+	"github.com/zafrem/bastion-tracker/internal/incidents"
+	"github.com/zafrem/bastion-tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/monitor"
+	"github.com/zafrem/bastion-tracker/internal/processor"
+	"github.com/zafrem/bastion-tracker/internal/store"
+	"github.com/zafrem/bastion-tracker/internal/validator"
 )
 
 // ─── fixture ─────────────────────────────────────────────────────────────────

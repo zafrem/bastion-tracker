@@ -4,13 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bastion/tracker/internal/alerts"
-	"github.com/bastion/tracker/internal/config"
-	"github.com/bastion/tracker/internal/honeytoken"
-	"github.com/bastion/tracker/internal/hub"
-	"github.com/bastion/tracker/internal/incidents"
-	"github.com/bastion/tracker/internal/models"
-	"github.com/bastion/tracker/internal/store"
+	"github.com/zafrem/bastion-tracker/internal/alerts"
+	"github.com/zafrem/bastion-tracker/internal/config"
+	"github.com/zafrem/bastion-tracker/internal/honeytoken"
+	"github.com/zafrem/bastion-tracker/internal/hub"
+	"github.com/zafrem/bastion-tracker/internal/incidents"
+	"github.com/zafrem/bastion-tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/store"
 )
 
 func newProcessor() *Processor {

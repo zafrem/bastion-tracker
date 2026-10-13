@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bastion/tracker/internal/config"
-	"github.com/bastion/tracker/internal/models"
-	"github.com/bastion/tracker/internal/store"
+	"github.com/zafrem/bastion-tracker/internal/config"
+	"github.com/zafrem/bastion-tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/store"
 )
 
 func newMgr(rules []config.AlertRule) *Manager {

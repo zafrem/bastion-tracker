@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 // Recorder captures live events flowing through the processor into a replayable scenario.

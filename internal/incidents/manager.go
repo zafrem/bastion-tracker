@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bastion/tracker/internal/metrics"
-	"github.com/bastion/tracker/internal/models"
-	"github.com/bastion/tracker/internal/store"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
+	"github.com/zafrem/bastion-tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/store"
 )
 
 // Manager creates and updates incidents.

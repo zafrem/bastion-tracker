@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 // defaultKey is used in standalone/demo mode when no secret is configured.

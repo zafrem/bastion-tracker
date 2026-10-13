@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bastion/tracker/internal/auth"
+	"github.com/zafrem/bastion-tracker/internal/auth"
 )
 
 type contextKey string

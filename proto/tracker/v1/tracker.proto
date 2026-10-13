@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package bastion.tracker.v1;
 
-option go_package = "github.com/bastion/tracker/gen/tracker/v1;trackerv1";
+option go_package = "github.com/zafrem/bastion-tracker/gen/tracker/v1;trackerv1";
 
 // TrackerService is the gRPC interface for Bastion-Tracker.
 // The implementation uses a JSON codec (codec.go), so field numbers

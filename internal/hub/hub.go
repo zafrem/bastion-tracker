@@ -10,8 +10,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/bastion/tracker/internal/metrics"
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 var upgrader = websocket.Upgrader{

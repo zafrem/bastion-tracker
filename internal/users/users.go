@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/bastion/tracker/internal/config"
+	"github.com/zafrem/bastion-tracker/internal/config"
 )
 
 // Sentinel errors returned by the Manager. Handlers map these to HTTP statuses.

@@ -3,7 +3,7 @@ package users
 import (
 	"testing"
 
-	"github.com/bastion/tracker/internal/config"
+	"github.com/zafrem/bastion-tracker/internal/config"
 )
 
 func TestVerify_PlaintextSeedStillWorks(t *testing.T) {

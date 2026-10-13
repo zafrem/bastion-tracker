@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

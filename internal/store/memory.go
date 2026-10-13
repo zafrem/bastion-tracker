@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 // Store holds recent events and traces in memory (PoC — no external DB required).

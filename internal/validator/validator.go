@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bastion/tracker/internal/metrics"
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 var validSeverities = map[string]bool{

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bastion/tracker/internal/config"
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/config"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 // Sink receives detected anomaly events for further processing (incident creation,

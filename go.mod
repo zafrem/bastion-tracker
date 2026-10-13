@@ -1,4 +1,4 @@
-module github.com/bastion/tracker
+module github.com/zafrem/bastion-tracker
 
 go 1.21
 

@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bastion/tracker/internal/models"
-	"github.com/bastion/tracker/internal/users"
+	"github.com/zafrem/bastion-tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/users"
 )
 
 // userErrorStatus maps a users package error to an HTTP status code.

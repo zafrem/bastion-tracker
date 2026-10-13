@@ -12,10 +12,10 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/bastion/tracker/internal/hub"
-	"github.com/bastion/tracker/internal/models"
-	"github.com/bastion/tracker/internal/processor"
-	"github.com/bastion/tracker/internal/store"
+	"github.com/zafrem/bastion-tracker/internal/hub"
+	"github.com/zafrem/bastion-tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/processor"
+	"github.com/zafrem/bastion-tracker/internal/store"
 )
 
 // Server implements the gRPC TrackerService.

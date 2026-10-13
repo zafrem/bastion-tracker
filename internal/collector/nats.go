@@ -7,7 +7,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/bastion/tracker/internal/models"
+	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
 // Sink receives decoded events.
