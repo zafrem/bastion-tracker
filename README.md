@@ -52,6 +52,14 @@ go build -o bin/tracker-cli ./cmd/tracker-cli
 ```
 
 ### Run
+The server refuses to start without an audit-signing key (`storage.audit_secret`, at least 32 bytes). Set it with an environment variable:
+
+```bash
+export TRACKER_AUDIT_SECRET=$(openssl rand -hex 32)
+```
+
+`make demo` (the `demo-server` command) is for local demos only and does not need it.
+
 ```bash
 make run            # start the REST + gRPC + WebSocket server
 make demo           # start the server and run all demo scenarios
@@ -92,6 +100,16 @@ The embedded dashboard is served by the REST server at http://localhost:8080/.
 runs on `server.rest_port`.)
 
 Storage defaults to in-memory (PoC mode); set `storage.postgresql_url` to enable PostgreSQL.
+
+#### Security settings
+
+| Setting | Default | Notes |
+|---|---|---|
+| `storage.audit_secret` / `TRACKER_AUDIT_SECRET` | none | **Required**, at least 32 bytes. The audit log is HMAC-signed with it; the former built-in key is gone because signatures made with a public key are forgeable |
+| `auth.enabled` | `false` | When true, `auth.jwt_secret` / `TRACKER_JWT_SECRET` (at least 32 bytes) is required, and every `auth.users` password must be a bcrypt hash |
+| `server.cors_allowed_origins` | `[]` | CORS allowlist; empty sends no CORS headers; `"*"` allows any origin |
+| `server.trust_proxy` | `false` | Honour `X-Forwarded-For` / `X-Real-IP` only when behind a trusted proxy |
+| `dev_mode` | `false` | Skips the startup checks above. Local demos only |
 
 ## Documentation
 - [Design Document](DESIGN.md)

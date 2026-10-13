@@ -12,6 +12,8 @@ services:
       - ./config:/etc/tracker
     environment:
       - CONFIG_PATH=/etc/tracker/config.yaml
+      # Required: signs the audit log (>= 32 bytes), e.g. TRACKER_AUDIT_SECRET=$(openssl rand -hex 32)
+      - TRACKER_AUDIT_SECRET=${TRACKER_AUDIT_SECRET:?set TRACKER_AUDIT_SECRET (>= 32 bytes)}
     depends_on:
       nats:
         condition: service_healthy

@@ -144,13 +144,14 @@ Queryable at `GET /v1/auth/login-audit` (admin only).
 ```yaml
 auth:
   enabled: true            # gates all management endpoints
-  jwt_secret: "..."        # HS256 signing key
+  jwt_secret: "..."        # HS256 signing key, >= 32 bytes (or env TRACKER_JWT_SECRET)
   jwt_expiry: "8h"         # access token TTL
   refresh_expiry: "168h"   # refresh window (7 days)
-  require_bcrypt: true     # reject plaintext passwords at startup
   users:
-    - { name: admin, password: "$2a$...", role: admin }
+    - { name: admin, password: "$2a$...", role: admin }   # must be a bcrypt hash
 ```
+
+With `auth.enabled: true` the server refuses to start if `jwt_secret` is missing, shorter than 32 bytes or the old `change-me-in-production` placeholder, or if any user password is not a bcrypt hash. `storage.audit_secret` (or `TRACKER_AUDIT_SECRET`, at least 32 bytes) is required regardless. `dev_mode: true` skips these checks for local demos. The older `require_bcrypt` flag is no longer needed (bcrypt is now always required when auth is on).
 
 ---
 
