@@ -212,6 +212,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort,
 		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy))
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
+	if err := grpcSrv.EnableTLS(cfg.Server.GRPCTLSCert, cfg.Server.GRPCTLSKey, cfg.Server.GRPCTLSClientCA); err != nil {
+		return fmt.Errorf("gRPC TLS: %w", err)
+	}
+	if grpcSrv.TLSEnabled() {
+		log.Printf("[grpc] TLS enabled (mutual TLS: %v)", cfg.Server.GRPCTLSClientCA != "")
+	}
 
 	go al.StartBackgroundTasks(ctx)
 

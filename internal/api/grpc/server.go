@@ -22,6 +22,7 @@ import (
 type Server struct {
 	UnimplementedTrackerServiceServer
 	grpcServer *grpc.Server
+	tls        bool
 	port       int
 	store      *store.Store
 	proc       *processor.Processor
@@ -31,18 +32,47 @@ type Server struct {
 // New creates a gRPC Server.
 func New(s *store.Store, proc *processor.Processor, h *hub.Hub, port int) *Server {
 	srv := &Server{store: s, proc: proc, hub: h, port: port}
-	srv.grpcServer = grpc.NewServer(
+	srv.grpcServer = srv.newServer()
+	return srv
+}
+
+// newServer builds the gRPC server (and registers the service) with any extra options, such as TLS.
+func (s *Server) newServer(extra ...grpc.ServerOption) *grpc.Server {
+	opts := append([]grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle: 5 * time.Minute,
 			Time:              2 * time.Minute,
 			Timeout:           20 * time.Second,
 		}),
 		grpc.UnaryInterceptor(loggingInterceptor),
-	)
-	RegisterTrackerServiceServer(srv.grpcServer, srv)
-	reflection.Register(srv.grpcServer)
-	return srv
+	}, extra...)
+	g := grpc.NewServer(opts...)
+	RegisterTrackerServiceServer(g, s)
+	reflection.Register(g)
+	return g
 }
+
+// EnableTLS serves gRPC over TLS using the given PEM files. With all three empty it does nothing and
+// the server stays plaintext. clientCAFile (optional) requires client certificates (mutual TLS).
+// Call it before Start/Serve; it returns an error for incomplete or unreadable configuration.
+func (s *Server) EnableTLS(certFile, keyFile, clientCAFile string) error {
+	creds, err := serverTLSCredentials(certFile, keyFile, clientCAFile)
+	if err != nil {
+		return err
+	}
+	if creds == nil {
+		return nil
+	}
+	s.grpcServer = s.newServer(grpc.Creds(creds))
+	s.tls = true
+	return nil
+}
+
+// TLSEnabled reports whether EnableTLS turned TLS on.
+func (s *Server) TLSEnabled() bool { return s.tls }
+
+// Serve accepts connections on lis until the server stops (used by tests with their own listener).
+func (s *Server) Serve(lis net.Listener) error { return s.grpcServer.Serve(lis) }
 
 func loggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	resp, err := handler(ctx, req)

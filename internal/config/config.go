@@ -76,6 +76,13 @@ type ServerConfig struct {
 	// TrustProxy honours X-Forwarded-For / X-Real-IP for the client address.
 	// Enable only when Tracker sits behind a proxy that sets them.
 	TrustProxy bool `yaml:"trust_proxy"`
+
+	// gRPC TLS. Set grpc_tls_cert and grpc_tls_key (PEM files) to serve gRPC over TLS; the files are
+	// re-read when they change, so rotation needs no restart. grpc_tls_client_ca additionally requires
+	// clients to present a certificate signed by it (mutual TLS). All empty = plaintext.
+	GRPCTLSCert     string `yaml:"grpc_tls_cert"`
+	GRPCTLSKey      string `yaml:"grpc_tls_key"`
+	GRPCTLSClientCA string `yaml:"grpc_tls_client_ca"`
 }
 
 type NATSConfig struct {

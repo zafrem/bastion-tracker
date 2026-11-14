@@ -110,6 +110,8 @@ Storage defaults to in-memory (PoC mode); set `storage.postgresql_url` to enable
 | `server.cors_allowed_origins` | `[]` | CORS allowlist; empty sends no CORS headers; `"*"` allows any origin |
 | `server.trust_proxy` | `false` | Honour `X-Forwarded-For` / `X-Real-IP` only when behind a trusted proxy |
 | `dev_mode` | `false` | Skips the startup checks above. Local demos only |
+| `server.grpc_tls_cert` / `server.grpc_tls_key` | none | PEM files: serve the gRPC port over TLS (set together; re-read on change, so rotation needs no restart). Unreadable or mismatched files refuse to start |
+| `server.grpc_tls_client_ca` | none | PEM CA bundle: require client certificates (mutual TLS) |
 
 ## Documentation
 - [Design Document](DESIGN.md)
