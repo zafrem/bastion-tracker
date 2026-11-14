@@ -83,20 +83,32 @@ var trackerServiceDesc = grpc.ServiceDesc{
 
 // ─── Unary handlers ───────────────────────────────────────────────────────────
 
-func submitEventHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+func submitEventHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	var req models.BastionEvent
 	if err := dec(&req); err != nil {
 		return nil, err
 	}
-	return srv.(TrackerServiceServer).SubmitEvent(ctx, &req)
+	if interceptor == nil {
+		return srv.(TrackerServiceServer).SubmitEvent(ctx, &req)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/bastion.tracker.v1.TrackerService/SubmitEvent"}
+	return interceptor(ctx, &req, info, func(ctx context.Context, r interface{}) (interface{}, error) {
+		return srv.(TrackerServiceServer).SubmitEvent(ctx, r.(*models.BastionEvent))
+	})
 }
 
-func submitBatchHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+func submitBatchHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	var req models.BatchEventRequest
 	if err := dec(&req); err != nil {
 		return nil, err
 	}
-	return srv.(TrackerServiceServer).SubmitBatchEvents(ctx, &req)
+	if interceptor == nil {
+		return srv.(TrackerServiceServer).SubmitBatchEvents(ctx, &req)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/bastion.tracker.v1.TrackerService/SubmitBatchEvents"}
+	return interceptor(ctx, &req, info, func(ctx context.Context, r interface{}) (interface{}, error) {
+		return srv.(TrackerServiceServer).SubmitBatchEvents(ctx, r.(*models.BatchEventRequest))
+	})
 }
 
 func queryEventsHandler(srv interface{}, stream grpc.ServerStream) error {
@@ -107,36 +119,60 @@ func queryEventsHandler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(TrackerServiceServer).QueryEvents(&req, stream)
 }
 
-func getTraceHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+func getTraceHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	var req models.TraceRequest
 	if err := dec(&req); err != nil {
 		return nil, err
 	}
-	return srv.(TrackerServiceServer).GetTrace(ctx, &req)
+	if interceptor == nil {
+		return srv.(TrackerServiceServer).GetTrace(ctx, &req)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/bastion.tracker.v1.TrackerService/GetTrace"}
+	return interceptor(ctx, &req, info, func(ctx context.Context, r interface{}) (interface{}, error) {
+		return srv.(TrackerServiceServer).GetTrace(ctx, r.(*models.TraceRequest))
+	})
 }
 
-func getLineageHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+func getLineageHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	var req models.LineageRequest
 	if err := dec(&req); err != nil {
 		return nil, err
 	}
-	return srv.(TrackerServiceServer).GetLineage(ctx, &req)
+	if interceptor == nil {
+		return srv.(TrackerServiceServer).GetLineage(ctx, &req)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/bastion.tracker.v1.TrackerService/GetLineage"}
+	return interceptor(ctx, &req, info, func(ctx context.Context, r interface{}) (interface{}, error) {
+		return srv.(TrackerServiceServer).GetLineage(ctx, r.(*models.LineageRequest))
+	})
 }
 
-func getIncidentsHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+func getIncidentsHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	var req models.IncidentRequest
 	if err := dec(&req); err != nil {
 		return nil, err
 	}
-	return srv.(TrackerServiceServer).GetIncidents(ctx, &req)
+	if interceptor == nil {
+		return srv.(TrackerServiceServer).GetIncidents(ctx, &req)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/bastion.tracker.v1.TrackerService/GetIncidents"}
+	return interceptor(ctx, &req, info, func(ctx context.Context, r interface{}) (interface{}, error) {
+		return srv.(TrackerServiceServer).GetIncidents(ctx, r.(*models.IncidentRequest))
+	})
 }
 
-func healthHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+func healthHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	var req models.HealthRequest
 	if err := dec(&req); err != nil {
 		return nil, err
 	}
-	return srv.(TrackerServiceServer).Health(ctx, &req)
+	if interceptor == nil {
+		return srv.(TrackerServiceServer).Health(ctx, &req)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/bastion.tracker.v1.TrackerService/Health"}
+	return interceptor(ctx, &req, info, func(ctx context.Context, r interface{}) (interface{}, error) {
+		return srv.(TrackerServiceServer).Health(ctx, r.(*models.HealthRequest))
+	})
 }
 
 // ─── Streaming handler ────────────────────────────────────────────────────────

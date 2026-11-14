@@ -212,6 +212,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort,
 		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy))
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
+	grpcSrv.EnableAuth(&cfg.Auth)
 	if err := grpcSrv.EnableTLS(cfg.Server.GRPCTLSCert, cfg.Server.GRPCTLSKey, cfg.Server.GRPCTLSClientCA); err != nil {
 		return fmt.Errorf("gRPC TLS: %w", err)
 	}

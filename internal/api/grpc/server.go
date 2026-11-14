@@ -6,12 +6,19 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 
+	"github.com/zafrem/bastion-tracker/internal/auth"
+	"github.com/zafrem/bastion-tracker/internal/config"
 	"github.com/zafrem/bastion-tracker/internal/hub"
 	"github.com/zafrem/bastion-tracker/internal/models"
 	"github.com/zafrem/bastion-tracker/internal/processor"
@@ -23,6 +30,8 @@ type Server struct {
 	UnimplementedTrackerServiceServer
 	grpcServer *grpc.Server
 	tls        bool
+	tlsCreds   credentials.TransportCredentials
+	authCfg    *config.AuthConfig
 	port       int
 	store      *store.Store
 	proc       *processor.Processor
@@ -36,20 +45,37 @@ func New(s *store.Store, proc *processor.Processor, h *hub.Hub, port int) *Serve
 	return srv
 }
 
-// newServer builds the gRPC server (and registers the service) with any extra options, such as TLS.
+// newServer builds the gRPC server (and registers the service) with current TLS and auth settings.
 func (s *Server) newServer(extra ...grpc.ServerOption) *grpc.Server {
-	opts := append([]grpc.ServerOption{
+	opts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle: 5 * time.Minute,
 			Time:              2 * time.Minute,
 			Timeout:           20 * time.Second,
 		}),
-		grpc.UnaryInterceptor(loggingInterceptor),
-	}, extra...)
+		grpc.ChainUnaryInterceptor(loggingInterceptor, s.unaryAuthInterceptor),
+		grpc.StreamInterceptor(s.streamAuthInterceptor),
+	}
+	if s.tlsCreds != nil {
+		opts = append(opts, grpc.Creds(s.tlsCreds))
+	}
+	opts = append(opts, extra...)
 	g := grpc.NewServer(opts...)
 	RegisterTrackerServiceServer(g, s)
 	reflection.Register(g)
 	return g
+}
+
+// EnableAuth configures JWT bearer authentication on the gRPC server when authCfg.Enabled is true.
+// Call before Start/Serve.
+func (s *Server) EnableAuth(authCfg *config.AuthConfig) {
+	s.authCfg = authCfg
+	s.grpcServer = s.newServer()
+}
+
+// AuthEnabled reports whether JWT authentication is enabled on the gRPC server.
+func (s *Server) AuthEnabled() bool {
+	return s.authCfg != nil && s.authCfg.Enabled
 }
 
 // EnableTLS serves gRPC over TLS using the given PEM files. With all three empty it does nothing and
@@ -63,8 +89,9 @@ func (s *Server) EnableTLS(certFile, keyFile, clientCAFile string) error {
 	if creds == nil {
 		return nil
 	}
-	s.grpcServer = s.newServer(grpc.Creds(creds))
+	s.tlsCreds = creds
 	s.tls = true
+	s.grpcServer = s.newServer()
 	return nil
 }
 
@@ -80,6 +107,57 @@ func loggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnarySe
 		log.Printf("[grpc] %s error: %v", info.FullMethod, err)
 	}
 	return resp, err
+}
+
+func (s *Server) unaryAuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	if err := s.authenticateMethod(ctx, info.FullMethod); err != nil {
+		return nil, err
+	}
+	return handler(ctx, req)
+}
+
+func (s *Server) streamAuthInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	if err := s.authenticateMethod(ss.Context(), info.FullMethod); err != nil {
+		return err
+	}
+	return handler(srv, ss)
+}
+
+func (s *Server) authenticateMethod(ctx context.Context, fullMethod string) error {
+	if s.authCfg == nil || !s.authCfg.Enabled {
+		return nil
+	}
+	if fullMethod == "/bastion.tracker.v1.TrackerService/Health" || strings.HasPrefix(fullMethod, "/grpc.reflection.") {
+		return nil
+	}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "missing metadata")
+	}
+	vals := md.Get("authorization")
+	if len(vals) == 0 {
+		return status.Error(codes.Unauthenticated, "missing authorization bearer token")
+	}
+	hdr := strings.TrimSpace(vals[0])
+	if len(hdr) <= 7 || !strings.EqualFold(hdr[:7], "Bearer ") {
+		return status.Error(codes.Unauthenticated, "missing Bearer prefix")
+	}
+	tokenStr := strings.TrimSpace(hdr[7:])
+	claims, err := auth.ValidateToken(tokenStr, s.authCfg.JWTSecret)
+	if err != nil {
+		return status.Error(codes.Unauthenticated, "invalid token: "+err.Error())
+	}
+
+	minRole := "viewer"
+	switch fullMethod {
+	case "/bastion.tracker.v1.TrackerService/SubmitEvent",
+		"/bastion.tracker.v1.TrackerService/SubmitBatchEvents":
+		minRole = "operator"
+	}
+	if auth.RoleLevel(claims.Role) < auth.RoleLevel(minRole) {
+		return status.Errorf(codes.PermissionDenied, "role %q is insufficient; need at least %q", claims.Role, minRole)
+	}
+	return nil
 }
 
 // Start listens on the configured port; blocks until ctx is cancelled.
