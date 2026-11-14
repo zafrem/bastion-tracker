@@ -79,11 +79,16 @@ func TestValidateSecurity_DevModeBypasses(t *testing.T) {
 func TestLoad_EnvOverridesSecrets(t *testing.T) {
 	t.Setenv("TRACKER_AUDIT_SECRET", strings.Repeat("e", 32))
 	t.Setenv("TRACKER_JWT_SECRET", strings.Repeat("f", 32))
+	t.Setenv("TRACKER_REST_PORT", "8084")
+	t.Setenv("TRACKER_GRPC_PORT", "9094")
 	c, err := Load("/nonexistent/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.Storage.AuditSecret != strings.Repeat("e", 32) || c.Auth.JWTSecret != strings.Repeat("f", 32) {
 		t.Error("env secrets were not applied")
+	}
+	if c.Server.RESTPort != 8084 || c.Server.GRPCPort != 9094 {
+		t.Errorf("env ports not applied: got rest=%d grpc=%d", c.Server.RESTPort, c.Server.GRPCPort)
 	}
 }

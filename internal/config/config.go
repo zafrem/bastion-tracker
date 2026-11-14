@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -266,7 +267,8 @@ func Defaults() *Config {
 }
 
 // Load reads a YAML config file, falling back to defaults for missing fields.
-// TRACKER_AUDIT_SECRET and TRACKER_JWT_SECRET override the corresponding keys.
+// TRACKER_AUDIT_SECRET, TRACKER_JWT_SECRET, TRACKER_REST_PORT, and
+// TRACKER_GRPC_PORT override the corresponding keys.
 func Load(path string) (*Config, error) {
 	cfg := Defaults()
 	if data, err := os.ReadFile(path); err == nil {
@@ -279,6 +281,16 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("TRACKER_JWT_SECRET"); v != "" {
 		cfg.Auth.JWTSecret = v
+	}
+	if v := os.Getenv("TRACKER_REST_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			cfg.Server.RESTPort = p
+		}
+	}
+	if v := os.Getenv("TRACKER_GRPC_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			cfg.Server.GRPCPort = p
+		}
 	}
 	return cfg, nil
 }
