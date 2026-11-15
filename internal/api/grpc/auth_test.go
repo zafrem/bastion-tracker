@@ -163,3 +163,21 @@ func TestGRPCAuth_EnforcesRoleHierarchy(t *testing.T) {
 		t.Error("expected Accepted=true")
 	}
 }
+
+// Schema reflection must not reveal the service surface to unauthenticated callers when auth is on.
+func TestGRPCAuth_ReflectionRequiresToken(t *testing.T) {
+	srv := newAuthTestServer(t, true)
+	conn := dialPlaintext(t, serveOn(t, srv))
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	stream, err := conn.NewStream(ctx, &grpc.StreamDesc{StreamName: "ServerReflectionInfo", ServerStreams: true, ClientStreams: true},
+		"/grpc.reflection.v1.ServerReflection/ServerReflectionInfo")
+	if err == nil {
+		var out struct{}
+		err = stream.RecvMsg(&out)
+	}
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("reflection without token: got %v, want Unauthenticated", err)
+	}
+}

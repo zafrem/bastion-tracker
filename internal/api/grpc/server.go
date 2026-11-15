@@ -127,7 +127,7 @@ func (s *Server) authenticateMethod(ctx context.Context, fullMethod string) erro
 	if s.authCfg == nil || !s.authCfg.Enabled {
 		return nil
 	}
-	if fullMethod == "/bastion.tracker.v1.TrackerService/Health" || strings.HasPrefix(fullMethod, "/grpc.reflection.") {
+	if fullMethod == "/bastion.tracker.v1.TrackerService/Health" {
 		return nil
 	}
 	md, ok := metadata.FromIncomingContext(ctx)

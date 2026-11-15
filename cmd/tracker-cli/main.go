@@ -213,6 +213,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy))
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
 	grpcSrv.EnableAuth(&cfg.Auth)
+	if !grpcSrv.AuthEnabled() {
+		log.Printf("[grpc] WARNING: auth.enabled is false: the gRPC API (including schema reflection) accepts unauthenticated callers")
+	}
 	if err := grpcSrv.EnableTLS(cfg.Server.GRPCTLSCert, cfg.Server.GRPCTLSKey, cfg.Server.GRPCTLSClientCA); err != nil {
 		return fmt.Errorf("gRPC TLS: %w", err)
 	}
