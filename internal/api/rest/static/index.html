@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bastion Control Center</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
 :root {
   --bg: #0b0e14; --bg2: #11151d; --bg3: #181d27; --bg4: #212734;
@@ -16,7 +17,7 @@
   --radius: 12px;
 }
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --bg: #f5f6f9; --bg2: #ffffff; --bg3: #f0f2f6; --bg4: #e6e9f0;
     --border: #e1e5ed; --text: #1b2130; --muted: #657089;
     --blue: #2f6fe4; --green: #12a06b; --yellow: #b77a05;
@@ -25,6 +26,15 @@
     --accent: #2f6fe4; --accent-soft: rgba(47,111,228,.10);
     --shadow: 0 1px 2px rgba(20,30,60,.06), 0 8px 24px rgba(20,30,60,.06);
   }
+}
+:root[data-theme="light"] {
+  --bg: #f5f6f9; --bg2: #ffffff; --bg3: #f0f2f6; --bg4: #e6e9f0;
+  --border: #e1e5ed; --text: #1b2130; --muted: #657089;
+  --blue: #2f6fe4; --green: #12a06b; --yellow: #b77a05;
+  --red: #d6414a; --orange: #c96a1a; --purple: #7a55e0;
+  --full: #2f6fe4; --lite: #12a06b; --minimal: #a9803f; --blocked: #d6414a;
+  --accent: #2f6fe4; --accent-soft: rgba(47,111,228,.10);
+  --shadow: 0 1px 2px rgba(20,30,60,.06), 0 8px 24px rgba(20,30,60,.06);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: Inter, -apple-system, 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.45; min-height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; }
@@ -51,7 +61,6 @@ body { background: var(--bg); color: var(--text); font-family: Inter, -apple-sys
 .nav-item:hover { background: var(--bg3); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); }
 .nav-item.active::before { content: ''; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
-.nav-item > span:first-child { width: 20px; text-align: center; flex-shrink: 0; }
 .nav-label { font-size: 13px; font-weight: 500; margin: 0; line-height: 1; }
 .nav-sep { height: 1px; background: var(--border); margin: 8px 4px; }
 
@@ -224,53 +233,181 @@ svg.pipeline { width: 100%; display: block; }
 .section-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
 @keyframes slideIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: translateY(0); } }
 .new-ev { animation: slideIn .2s ease; }
+
+/* ── Views: launch + login (full-screen, outside the app shell) ── */
+.view { display: none; position: fixed; inset: 0; z-index: 100; overflow-y: auto; background: var(--bg); background-image: radial-gradient(900px 480px at 50% -10%, var(--accent-soft), transparent 70%); }
+body[data-view="launch"] #view-launch, body[data-view="login"] #view-login { display: flex; }
+body[data-view="launch"] .app, body[data-view="login"] .app { display: none; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 16px; }
+.launch { margin: auto; width: 100%; max-width: 920px; padding: 48px 28px; display: flex; flex-direction: column; gap: 36px; }
+.launch-hero h1 { font-size: 44px; line-height: 1.08; letter-spacing: -.03em; font-weight: 800; margin: 22px 0 14px; max-width: 700px; }
+.launch-hero p { font-size: 16px; color: var(--muted); max-width: 600px; }
+.launch-status { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 22px; }
+.launch-cta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 26px; align-items: center; }
+.btn.lg { padding: 10px 22px; font-size: 14px; border-radius: 10px; }
+.feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+.feature { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+.feature h3 { font-size: 14px; margin-bottom: 6px; }
+.feature p { font-size: 12.5px; color: var(--muted); }
+.launch-foot { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.login-wrap { margin: auto; width: 100%; max-width: 400px; padding: 32px 20px; }
+.login-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 28px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 16px; }
+.login-card h2 { font-size: 20px; letter-spacing: -.02em; }
+.login-card .sub { font-size: 13px; color: var(--muted); margin-top: -8px; }
+.form-error { font-size: 12.5px; color: var(--red); background: rgba(255,107,107,.1); border-radius: 8px; padding: 8px 12px; display: none; }
+.form-error.show { display: block; }
+.form-note { font-size: 12.5px; color: var(--muted); background: var(--bg3); border-radius: 8px; padding: 10px 12px; }
+.link-btn { background: none; border: none; color: var(--muted); font-size: 12.5px; cursor: pointer; font-family: inherit; padding: 0; align-self: center; }
+.link-btn:hover { color: var(--accent); }
+
+/* ── User chip + menu ── */
+.user-wrap { position: relative; margin-left: 8px; }
+.user-chip { display: flex; align-items: center; gap: 8px; background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 3px 12px 3px 3px; cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 500; }
+.user-chip:hover { border-color: var(--accent); }
+.avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; letter-spacing: .02em; flex-shrink: 0; }
+.avatar.lg { width: 56px; height: 56px; font-size: 20px; }
+.user-menu { display: none; position: absolute; right: 0; top: calc(100% + 8px); min-width: 210px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 6px; z-index: 150; }
+.user-menu.open { display: block; }
+.user-menu .um-head { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.user-menu .um-head strong { display: block; font-size: 13px; }
+.user-menu .um-head span { font-size: 11.5px; color: var(--muted); }
+.user-menu button { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--text); font-family: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.user-menu button:hover { background: var(--bg3); }
+body[data-role]:not([data-role="admin"]) .admin-only { display: none; }
+
+/* ── Activity + profile ── */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 500; padding: 8px 14px; cursor: pointer; margin-bottom: -1px; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.kv { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.profile-head { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.profile-head h3 { font-size: 18px; letter-spacing: -.01em; }
+.swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; outline: 1px solid var(--border); cursor: pointer; background: var(--accent); padding: 0; }
+.swatch.active { border-color: var(--bg2); outline: 2px solid var(--text); }
+.pref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 800px) { .feature-grid, .pref-grid { grid-template-columns: 1fr; } .launch-hero h1 { font-size: 32px; } }
+
+/* ── Density ── */
+:root[data-density="compact"] .page-area { padding: 18px 22px 28px; gap: 14px; }
+:root[data-density="compact"] .card-body { padding: 12px; }
+:root[data-density="compact"] .card-header { padding: 9px 14px; }
+:root[data-density="compact"] .tbl td { padding: 6px 12px; }
+:root[data-density="compact"] .tbl th { padding: 7px 12px; }
+:root[data-density="compact"] .ev-row { padding: 6px 14px; }
+:root[data-density="compact"] .stat-card { padding: 12px 16px; }
+body[data-view="boot"] .app { display: none; }
 </style>
 </head>
-<body>
+<body data-view="boot">
+<!-- ══════════════ LAUNCH VIEW ══════════════ -->
+<div class="view" id="view-launch">
+  <div class="launch">
+    <div class="launch-hero">
+      <div class="brand"><span class="brand-mark">B</span><span>Bastion Control Center</span></div>
+      <h1>See every request. Catch every threat.</h1>
+      <p>Real-time visibility into your RAG pipelines: live event flow, request traces, security alerts and a tamper-evident audit trail in one place.</p>
+      <div class="launch-status">
+        <span class="stat-pill"><span class="dot blue" id="ln-dot"></span><span id="ln-server">Checking server…</span></span>
+        <span class="stat-pill" id="ln-auth">Checking access…</span>
+        <span class="stat-pill" id="ln-user" style="display:none"></span>
+      </div>
+      <div class="launch-cta">
+        <button class="btn primary lg" id="ln-primary" onclick="launchPrimary()">Continue</button>
+        <a class="btn lg" href="/api-docs.html" style="text-decoration:none">API docs</a>
+      </div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature"><h3>Live event flow</h3><p>Watch events stream through every pipeline stage as they happen, with server-side filtering.</p></div>
+      <div class="feature"><h3>Security and incidents</h3><p>Triage alerts, resolve incidents, and follow runbooks. Honey tokens flag unauthorized access.</p></div>
+      <div class="feature"><h3>Traces and audit</h3><p>Drill from a request to its full timeline, and verify audit log integrity with HMAC checks.</p></div>
+    </div>
+    <div class="launch-foot"><span>Bastion Tracker</span><span id="ln-version"></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ LOGIN VIEW ══════════════ -->
+<div class="view" id="view-login">
+  <div class="login-wrap">
+    <form class="login-card" id="login-form" onsubmit="submitLogin(event)" autocomplete="on">
+      <div class="brand"><span class="brand-mark">B</span><span>Bastion Control Center</span></div>
+      <h2 id="lg-title">Sign in</h2>
+      <div class="sub" id="lg-sub">Use your Bastion account to continue.</div>
+      <div class="form-error" id="lg-error" role="alert"></div>
+      <div class="form-note" id="lg-open-note" style="display:none">Authentication is disabled on this server. Choose a display name to personalize your workspace.</div>
+      <div class="field" id="lg-user-field"><label for="lg-user">Username</label><input type="text" id="lg-user" autocomplete="username" autofocus></div>
+      <div class="field" id="lg-pass-field"><label for="lg-pass">Password</label><input type="password" id="lg-pass" autocomplete="current-password"></div>
+      <button class="btn primary lg" type="submit" id="lg-submit">Sign in</button>
+      <button class="link-btn" type="button" onclick="location.href='/launch'">Back to start</button>
+    </form>
+  </div>
+</div>
+
 <div class="app">
 
 <!-- Top bar -->
 <div class="topbar">
-  <div class="logo">🏛 Bastion Control Center</div>
+  <div class="logo">Bastion Control Center</div>
   <div class="topbar-stats">
     <div class="stat-pill"><span class="dot blue" id="ws-dot"></span><span id="ws-label" style="font-size:11px;color:var(--muted)">Connecting…</span></div>
     <div class="stat-pill">Events: <strong id="hd-events">0</strong></div>
     <div class="stat-pill">Alerts: <strong id="hd-alerts">0</strong></div>
     <div class="stat-pill" id="hd-rec-pill" style="display:none;border-color:var(--red)"><span class="dot red"></span><span style="font-size:11px;color:var(--red)">Recording</span></div>
   </div>
+  <div class="user-wrap" id="user-wrap">
+    <button class="user-chip" id="user-chip" onclick="toggleUserMenu(event)" aria-haspopup="true">
+      <span class="avatar" id="uc-avatar">?</span><span id="uc-name">…</span>
+    </button>
+    <div class="user-menu" id="user-menu">
+      <div class="um-head"><strong id="um-name"></strong><span id="um-role"></span></div>
+      <button onclick="goMenu('profile')">Profile and preferences</button>
+      <button onclick="goMenu('activity')">Activity log</button>
+      <button onclick="signOut()" id="um-signout">Sign out</button>
+    </div>
+  </div>
 </div>
 
 <!-- Sidebar -->
 <nav class="sidebar">
   <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard',event)">
-    <span>🏠</span><span class="nav-label">Dashboard</span>
+    <span class="nav-label">Dashboard</span>
   </a>
   <a class="nav-item" data-page="live" onclick="navigate('live',event)">
-    <span>🌊</span><span class="nav-label">Live Flow</span>
+    <span class="nav-label">Live Flow</span>
   </a>
   <a class="nav-item" data-page="traces" onclick="navigate('traces',event)">
-    <span>🔍</span><span class="nav-label">Traces</span>
+    <span class="nav-label">Traces</span>
   </a>
   <div class="nav-sep"></div>
   <a class="nav-item" data-page="security" onclick="navigate('security',event)">
-    <span>🛡</span><span class="nav-label">Security</span>
+    <span class="nav-label">Security</span>
   </a>
   <a class="nav-item" data-page="audit" onclick="navigate('audit',event)">
-    <span>📋</span><span class="nav-label">Audit Log</span>
+    <span class="nav-label">Audit Log</span>
+  </a>
+  <a class="nav-item" data-page="activity" onclick="navigate('activity',event)">
+    <span class="nav-label">Activity</span>
   </a>
   <div class="nav-sep"></div>
   <a class="nav-item" data-page="honey" onclick="navigate('honey',event)">
-    <span>🍯</span><span class="nav-label">Honey Tokens</span>
+    <span class="nav-label">Honey Tokens</span>
   </a>
   <a class="nav-item" data-page="demo" onclick="navigate('demo',event)">
-    <span>🎬</span><span class="nav-label">Demo</span>
+    <span class="nav-label">Demo</span>
   </a>
   <div class="nav-sep"></div>
-  <a class="nav-item" data-page="users" onclick="navigate('users',event)">
-    <span>👤</span><span class="nav-label">Users</span>
+  <a class="nav-item admin-only" data-page="users" onclick="navigate('users',event)">
+    <span class="nav-label">Users</span>
   </a>
   <a class="nav-item" data-page="settings" onclick="navigate('settings',event)">
-    <span>⚙</span><span class="nav-label">Settings</span>
+    <span class="nav-label">Settings</span>
+  </a>
+  <a class="nav-item" data-page="profile" onclick="navigate('profile',event)">
+    <span class="nav-label">Profile</span>
   </a>
 </nav>
 
@@ -697,6 +834,70 @@ svg.pipeline { width: 100%; display: block; }
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════ ACTIVITY ══ -->
+  <div class="page" id="page-activity">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
+      <div>
+        <div class="page-header">Activity</div>
+        <div class="page-sub">Sign-ins, system events and your own actions</div>
+      </div>
+      <div class="btn-group">
+        <input type="text" id="act-search" placeholder="Filter…" style="width:220px" oninput="renderActivity()">
+        <button class="btn" onclick="loadActivity()">Refresh</button>
+        <button class="btn danger" id="act-clear" style="display:none" onclick="clearMyActivity()">Clear my log</button>
+      </div>
+    </div>
+    <div class="tabs" id="act-tabs">
+      <button class="tab admin-only active" data-tab="signins" onclick="setActTab('signins')">Sign-ins</button>
+      <button class="tab" data-tab="system" onclick="setActTab('system')">System events</button>
+      <button class="tab" data-tab="mine" onclick="setActTab('mine')">My actions</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title" id="act-title">Sign-ins</span><span id="act-count" style="font-size:11px;color:var(--muted)"></span></div>
+      <div class="tbl-wrap" style="max-height:62vh;overflow-y:auto">
+        <table class="tbl">
+          <thead id="act-head"></thead>
+          <tbody id="act-body"><tr><td><div class="empty">Loading…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ PROFILE ══ -->
+  <div class="page" id="page-profile">
+    <div>
+      <div class="page-header">Profile</div>
+      <div class="page-sub">Your account and personal preferences. Preferences are saved in this browser.</div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Account</span></div>
+        <div class="card-body">
+          <div class="profile-head"><span class="avatar lg" id="pf-avatar">?</span><div><h3 id="pf-name"></h3><span class="badge" id="pf-role"></span></div></div>
+          <dl class="kv" id="pf-kv"></dl>
+          <div class="btn-group" style="margin-top:18px"><button class="btn danger" onclick="signOut()" id="pf-signout">Sign out</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Preferences</span><button class="btn btn-sm" onclick="resetPrefs()">Reset to defaults</button></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field"><label for="pf-display">Display name</label><input type="text" id="pf-display" maxlength="32" onchange="updatePref('displayName', this.value.trim())"></div>
+            <div class="pref-grid">
+              <div class="field"><label for="pf-theme">Theme</label>
+                <select id="pf-theme" onchange="updatePref('theme', this.value)"><option value="system">Match system</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+              <div class="field"><label for="pf-density">Density</label>
+                <select id="pf-density" onchange="updatePref('density', this.value)"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+            </div>
+            <div class="field"><label for="pf-landing">Start page after sign-in</label>
+              <select id="pf-landing" onchange="updatePref('landing', this.value)"></select></div>
+            <div class="field"><label>Accent color</label><div class="swatches" id="pf-swatches"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /page-area -->
 </div><!-- /app -->
 
@@ -850,13 +1051,10 @@ function activatePage(page) {
   else if (page === 'users') loadUsers();
   else if (page === 'demo') { loadScenarios(); checkRecStatus(); }
   else if (page === 'settings') { loadHealth(); loadDeadLetters(); }
+  else if (page === 'activity') { setActTab(actTab); }
+  else if (page === 'profile') renderProfile();
 }
 
-window.addEventListener('popstate', e => {
-  const page = e.state?.page || 'dashboard';
-  currentPage = page;
-  activatePage(page);
-});
 
 // ══════════════════════════════════════════════════════ WEBSOCKET ══
 function connectWS() {
@@ -1580,18 +1778,22 @@ function clearCfgFilter() {
 // ══════════════════════════════════════════════ API HELPERS ══
 async function api(url, method, body) {
   try {
-    const opts = { method: method||'GET', headers: {'Content-Type':'application/json'} };
+    const m = (method || 'GET').toUpperCase();
+    const opts = { method: m, headers: {'Content-Type':'application/json'} };
     if (body !== undefined) opts.body = JSON.stringify(body);
-    const r = await fetch(url, opts);
+    const r = await authFetch(url, opts);
+    trackAction(m, url, r.ok);
     if (!r.ok) return null;
     return r.json().catch(() => null);
   } catch { return null; }
 }
 
 async function apiRaw(url, method, body) {
-  const opts = { method: method||'POST', headers: {'Content-Type':'application/json'} };
+  const m = (method || 'POST').toUpperCase();
+  const opts = { method: m, headers: {'Content-Type':'application/json'} };
   if (body !== undefined) opts.body = JSON.stringify(body);
-  return fetch(url, opts).catch(() => ({ ok: false }));
+  try { const r = await authFetch(url, opts); trackAction(m, url, r.ok); return r; }
+  catch { trackAction(m, url, false); return { ok: false }; }
 }
 
 // ══════════════════════════════════════════════════ MODALS ══
@@ -1718,15 +1920,333 @@ setInterval(() => { if (currentPage==='honey') loadHoney(); }, 30000);
 setInterval(() => { if (currentPage==='demo') { loadScenarios(); checkRecStatus(); } }, 10000);
 
 // ══════════════════════════════════════════════════ INIT ══
-(function init() {
-  let page = location.pathname.replace(/^\//, '') || 'dashboard';
-  const validPages = ['dashboard','live','traces','security','audit','honey','demo','settings'];
-  // Alias: /flow → live (used in demo scripts)
-  if (page === 'flow') page = 'live';
-  currentPage = validPages.includes(page) ? page : 'dashboard';
-  history.replaceState({ page: currentPage }, '', '/' + currentPage);
-  activatePage(currentPage);
-  connectWS();
+// ══════════════════════════════════════════════ SESSION / AUTH ══
+// Auth state lives in sessionStorage (cleared when the tab closes); personal
+// preferences and the local action log live in localStorage, keyed per user.
+const AUTH_KEY = 'bastion.session', LAST_USER_KEY = 'bastion.lastUser';
+const APP_PAGES = ['dashboard','live','traces','security','audit','activity','honey','demo','users','settings','profile'];
+let authRequired = false;
+let session = null;           // { user, role, token|null, exp (unix s) }
+let pendingPage = null;
+let refreshTimer = null;
+let wsStarted = false;
+
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function store(kind) { try { return kind === 'session' ? sessionStorage : localStorage; } catch { return null; } }
+function sGet(kind, k) { try { return store(kind)?.getItem(k) ?? null; } catch { return null; } }
+function sSet(kind, k, v) { try { store(kind)?.setItem(k, v); } catch {} }
+function sDel(kind, k) { try { store(kind)?.removeItem(k); } catch {} }
+
+function decodeJwt(t) {
+  try {
+    let p = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    p += '='.repeat((4 - p.length % 4) % 4);
+    return JSON.parse(atob(p));
+  } catch { return {}; }
+}
+function loadSession() {
+  try {
+    const s = JSON.parse(sGet('session', AUTH_KEY));
+    if (s && s.user && (!s.token || (s.exp || 0) * 1000 > Date.now())) return s;
+  } catch {}
+  return null;
+}
+function saveSession() { session ? sSet('session', AUTH_KEY, JSON.stringify(session)) : sDel('session', AUTH_KEY); }
+function hasAccess() { return !authRequired || !!(session && session.token); }
+
+async function detectAuth() {
+  try { authRequired = (await fetch('/v1/dashboard/summary')).status === 401; }
+  catch { authRequired = false; }
+}
+
+async function authFetch(url, opts) {
+  opts.headers = Object.assign({}, opts.headers);
+  if (session?.token) opts.headers.Authorization = 'Bearer ' + session.token;
+  const r = await fetch(url, opts);
+  if (r.status === 401 && session?.token && url !== '/v1/auth/login' && url !== '/v1/auth/refresh') expireSession();
+  return r;
+}
+
+function expireSession() {
+  if (!session?.token) return;
+  sDel('session', AUTH_KEY);
+  sSet('session', 'bastion.expired', '1');
+  location.href = '/login';
+}
+
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  if (!session?.token || !session.exp) return;
+  const ttl = session.exp * 1000 - Date.now();
+  if (ttl <= 0) return expireSession();
+  refreshTimer = setTimeout(refreshToken, Math.max(5000, Math.min(ttl * 0.8, 2147483000)));
+}
+async function refreshToken() {
+  if (!session?.token) return;
+  try {
+    const r = await fetch('/v1/auth/refresh', { method: 'POST', headers: {'Content-Type':'application/json', Authorization: 'Bearer ' + session.token}, body: JSON.stringify({ token: session.token }) });
+    if (!r.ok) return expireSession();
+    const d = await r.json();
+    session.token = d.token; session.exp = decodeJwt(d.token).exp || 0;
+    saveSession(); scheduleRefresh();
+  } catch { refreshTimer = setTimeout(refreshToken, 30000); }
+}
+
+async function submitLogin(e) {
+  e?.preventDefault();
+  const err = document.getElementById('lg-error');
+  const showErr = m => { err.textContent = m; err.classList.add('show'); };
+  err.classList.remove('show');
+  const user = document.getElementById('lg-user').value.trim();
+  const btn = document.getElementById('lg-submit');
+
+  if (!authRequired) {                       // open mode: local profile only
+    session = { user: user || 'Guest', role: 'admin', token: null, exp: 0 };
+    finishLogin(); return;
+  }
+  const password = document.getElementById('lg-pass').value;
+  if (!user || !password) return showErr('Enter your username and password.');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const r = await fetch('/v1/auth/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username: user, password }) });
+    if (!r.ok) {
+      showErr(r.status === 401 ? 'Invalid username or password.' : await errMsg(r, 'Sign-in failed. Try again.'));
+      return;
+    }
+    const d = await r.json();
+    const c = decodeJwt(d.token);
+    session = { user: c.user_id || user, role: d.role || c.role || 'viewer', token: d.token, exp: c.exp || 0 };
+    document.getElementById('lg-pass').value = '';
+    finishLogin();
+  } catch { showErr('Cannot reach the server.'); }
+  finally { btn.disabled = false; btn.textContent = authRequired ? 'Sign in' : 'Continue'; }
+}
+function finishLogin() {
+  saveSession(); sSet('local', LAST_USER_KEY, session.user);
+  loadPrefs(); applyPrefs(); scheduleRefresh();
+  logActivity('Signed in', authRequired ? 'Password login' : 'Open access', true);
+  const target = (pendingPage && APP_PAGES.includes(pendingPage)) ? pendingPage : prefs.landing;
+  pendingPage = null;
+  history.pushState({ page: target }, '', '/' + target);
+  route();
+}
+function signOut() {
+  logActivity('Signed out', '', true);
+  sDel('session', AUTH_KEY);
+  if (!authRequired) { sDel('local', LAST_USER_KEY); location.href = '/login'; }
+  else location.href = '/launch';
+}
+
+// ══════════════════════════════════════════════ PREFERENCES ══
+const DEFAULT_PREFS = { displayName: '', theme: 'system', accent: '', density: 'comfortable', landing: 'dashboard' };
+const ACCENTS = [['Default',''],['Violet','#8b6cf0'],['Teal','#12a594'],['Green','#22a06b'],['Amber','#d98a1f'],['Rose','#e5547a']];
+let prefs = Object.assign({}, DEFAULT_PREFS);
+const prefsUser = () => (session?.user || sGet('local', LAST_USER_KEY) || '_default').toLowerCase();
+function loadPrefs() {
+  let p = {};
+  try { p = JSON.parse(sGet('local', 'bastion.prefs.' + prefsUser())) || {}; } catch {}
+  prefs = Object.assign({}, DEFAULT_PREFS, p);
+  if (!APP_PAGES.includes(prefs.landing)) prefs.landing = 'dashboard';
+}
+function savePrefs() { sSet('local', 'bastion.prefs.' + prefsUser(), JSON.stringify(prefs)); }
+function applyPrefs() {
+  const root = document.documentElement;
+  prefs.theme === 'system' ? root.removeAttribute('data-theme') : root.setAttribute('data-theme', prefs.theme);
+  root.setAttribute('data-density', prefs.density);
+  if (/^#[0-9a-f]{6}$/i.test(prefs.accent)) {
+    const n = parseInt(prefs.accent.slice(1), 16);
+    root.style.setProperty('--accent', prefs.accent);
+    root.style.setProperty('--accent-soft', `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},.16)`);
+  } else { root.style.removeProperty('--accent'); root.style.removeProperty('--accent-soft'); }
+  renderChrome();
+}
+function updatePref(k, v) { prefs[k] = v; savePrefs(); applyPrefs(); if (currentPage === 'profile') renderProfile(); toast('Preference saved', 'success'); }
+function resetPrefs() { prefs = Object.assign({}, DEFAULT_PREFS); savePrefs(); applyPrefs(); renderProfile(); toast('Preferences reset', 'info'); }
+
+const shownName = () => prefs.displayName || session?.user || 'Guest';
+function initials(n) {
+  const parts = String(n).split(/[\s._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] || '?') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+function renderChrome() {
+  if (!session) return;
+  const name = shownName();
+  const roleTxt = authRequired ? session.role : 'open access';
+  document.body.dataset.role = authRequired ? session.role : 'admin';
+  document.getElementById('uc-avatar').textContent = initials(name);
+  document.getElementById('uc-name').textContent = name;
+  document.getElementById('um-name').textContent = name;
+  document.getElementById('um-role').textContent = roleTxt;
+  document.getElementById('um-signout').textContent = authRequired ? 'Sign out' : 'Switch profile';
+}
+function toggleUserMenu(e) { e.stopPropagation(); document.getElementById('user-menu').classList.toggle('open'); }
+document.addEventListener('click', () => document.getElementById('user-menu')?.classList.remove('open'));
+function goMenu(page) { document.getElementById('user-menu').classList.remove('open'); navigate(page); }
+
+function renderProfile() {
+  if (!session) return;
+  const name = shownName();
+  document.getElementById('pf-avatar').textContent = initials(name);
+  document.getElementById('pf-name').textContent = name;
+  const role = document.getElementById('pf-role');
+  role.textContent = authRequired ? session.role : 'open access';
+  role.className = 'badge ' + (session.role === 'admin' ? 'running' : session.role === 'operator' ? 'warning' : 'info');
+  const exp = session.exp ? new Date(session.exp * 1000).toLocaleString() : '—';
+  document.getElementById('pf-kv').innerHTML =
+    `<dt>Username</dt><dd>${escHtml(session.user)}</dd>
+     <dt>Role</dt><dd>${escHtml(authRequired ? session.role : 'open access (auth disabled)')}</dd>
+     <dt>Session expires</dt><dd>${escHtml(session.token ? exp : 'when this tab closes')}</dd>
+     <dt>Authentication</dt><dd>${authRequired ? 'JWT bearer token' : 'Disabled on server'}</dd>`;
+  document.getElementById('pf-display').value = prefs.displayName;
+  document.getElementById('pf-theme').value = prefs.theme;
+  document.getElementById('pf-density').value = prefs.density;
+  const land = document.getElementById('pf-landing');
+  land.innerHTML = APP_PAGES.filter(p => p !== 'profile' && (p !== 'users' || session.role === 'admin' || !authRequired))
+    .map(p => `<option value="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</option>`).join('');
+  land.value = prefs.landing;
+  document.getElementById('pf-swatches').innerHTML = ACCENTS.map(([n, c]) =>
+    `<button class="swatch${prefs.accent === c ? ' active' : ''}" title="${n}" aria-label="${n}" style="background:${c || '#4f8ff7'}" onclick="updatePref('accent','${c}')"></button>`).join('');
+  document.getElementById('pf-signout').textContent = authRequired ? 'Sign out' : 'Switch profile';
+}
+
+// ══════════════════════════════════════════════ ACTIVITY ══
+const ACTION_LABELS = [
+  [/\/alerts\/[^/]+\/acknowledge/, 'Acknowledged alert'], [/\/alerts\/[^/]+\/resolve/, 'Resolved alert'],
+  [/\/security\/incidents\/[^/]+\/resolve/, 'Resolved incident'],
+  [/^POST \/v1\/honey-tokens$/, 'Created honey token'], [/^DELETE \/v1\/honey-tokens/, 'Deleted honey token'],
+  [/^POST \/v1\/users$/, 'Created user'], [/^PATCH \/v1\/users/, 'Updated user'], [/^DELETE \/v1\/users/, 'Deleted user'],
+  [/\/demo\/replay/, 'Started demo scenario'], [/\/demo\/inject/, 'Injected demo event'], [/\/demo\/stop/, 'Stopped demo scenario'],
+  [/\/demo\/record\/start/, 'Started recording'], [/\/demo\/record\/stop/, 'Stopped recording'],
+  [/\/config\/reload/, 'Reloaded configuration'], [/\/monitor\/mode/, 'Changed monitor mode'],
+];
+const actKey = () => 'bastion.activity.' + prefsUser();
+function myLog() { try { return JSON.parse(sGet('local', actKey())) || []; } catch { return []; } }
+function logActivity(action, detail, ok) {
+  const log = myLog();
+  log.unshift({ t: Date.now(), action, detail: detail || '', ok: ok !== false });
+  sSet('local', actKey(), JSON.stringify(log.slice(0, 200)));
+}
+function trackAction(method, url, ok) {
+  if (method === 'GET' || url.startsWith('/v1/auth/')) return;
+  const path = url.split('?')[0], key = method + ' ' + path;
+  const label = (ACTION_LABELS.find(([re]) => re.test(key)) || [])[1] || key;
+  logActivity(label, key, ok);
+}
+function clearMyActivity() {
+  if (!confirm('Clear your local action log? This cannot be undone.')) return;
+  sDel('local', actKey()); loadActivity();
+}
+
+let actTab = 'signins';
+let actData = { signins: null, system: null, mine: [] };
+function setActTab(t) {
+  actTab = t;
+  document.querySelectorAll('#act-tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.getElementById('act-clear').style.display = t === 'mine' ? '' : 'none';
+  loadActivity();
+}
+async function loadActivity() {
+  if (actTab === 'signins' && authRequired && session.role !== 'admin') actTab = 'system';
+  if (actTab === 'signins') actData.signins = await api('/v1/auth/login-audit?limit=200');
+  else if (actTab === 'system') actData.system = (await api('/v1/dashboard/recent-activity'))?.events ?? null;
+  else actData.mine = myLog();
+  document.querySelectorAll('#act-tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === actTab));
+  renderActivity();
+}
+function renderActivity() {
+  const q = (document.getElementById('act-search').value || '').toLowerCase();
+  const head = document.getElementById('act-head'), body = document.getElementById('act-body');
+  const time = ts => ts ? new Date(ts).toLocaleString() : '—';
+  let cols, rows, title, unavailable;
+  if (actTab === 'signins') {
+    title = 'Sign-ins'; cols = ['Time','User','Role','Source','Result','Reason'];
+    unavailable = !Array.isArray(actData.signins) ? 'Sign-in history is unavailable. It requires an admin account.' : null;
+    rows = (actData.signins || []).map(e => ({ text: [e.username, e.role, e.source_ip, e.success ? 'success' : 'failed', e.reason].join(' '),
+      html: `<tr><td>${time(e.timestamp)}</td><td style="font-weight:600">${escHtml(e.username)}</td><td>${escHtml(e.role) || '—'}</td><td class="mono">${escHtml(e.source_ip) || '—'}</td><td><span class="badge ${e.success ? 'passed' : 'blocked'}">${e.success ? 'success' : 'failed'}</span></td><td>${escHtml(e.reason) || '—'}</td></tr>` }));
+  } else if (actTab === 'system') {
+    title = 'System events (warning and above)'; cols = ['Time','Severity','Module','Event','Tenant'];
+    unavailable = !Array.isArray(actData.system) ? 'System activity could not be loaded.' : null;
+    rows = (actData.system || []).map(e => ({ text: [e.severity, e.module, e.event_type, e.tenant_id].join(' '),
+      html: `<tr><td>${time(e.timestamp)}</td><td><span class="badge ${escHtml(e.severity)}">${escHtml(e.severity)}</span></td><td><span class="mod-chip ${escHtml(e.module)}">${escHtml(e.module)}</span></td><td>${escHtml(e.event_type)}</td><td>${escHtml(e.tenant_id) || '—'}</td></tr>` }));
+  } else {
+    title = 'My actions (this browser)'; cols = ['Time','Action','Result','Request'];
+    rows = actData.mine.map(e => ({ text: [e.action, e.detail].join(' '),
+      html: `<tr><td>${time(e.t)}</td><td style="font-weight:600">${escHtml(e.action)}</td><td><span class="badge ${e.ok ? 'passed' : 'blocked'}">${e.ok ? 'ok' : 'failed'}</span></td><td class="mono">${escHtml(e.detail) || '—'}</td></tr>` }));
+  }
+  document.getElementById('act-title').textContent = title;
+  head.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+  const shown = rows.filter(r => !q || r.text.toLowerCase().includes(q));
+  document.getElementById('act-count').textContent = unavailable ? '' : `${shown.length} of ${rows.length}`;
+  body.innerHTML = unavailable ? `<tr><td colspan="${cols.length}"><div class="empty">${unavailable}</div></td></tr>`
+    : shown.length ? shown.map(r => r.html).join('')
+    : `<tr><td colspan="${cols.length}"><div class="empty">${rows.length ? 'No entries match your filter.' : 'Nothing recorded yet.'}</div></td></tr>`;
+}
+
+// ══════════════════════════════════════════════ VIEWS / ROUTING ══
+function showView(v) { document.body.dataset.view = v; }
+function route() {
+  let path = location.pathname.replace(/^\/|\/$/g, '');
+  if (path === 'flow') path = 'live';
+  if (path === '' || path === 'launch') { showView('launch'); renderLaunch(); return; }
+  if (path === 'login') { showView('login'); renderLogin(); return; }
+  if (!APP_PAGES.includes(path)) path = 'dashboard';
+  if (!hasAccess()) { pendingPage = path; history.replaceState({}, '', '/login'); showView('login'); renderLogin(); return; }
+  showView('app');
+  renderChrome();
+  if (!wsStarted) { wsStarted = true; connectWS(); }
+  currentPage = path;
+  activatePage(path);
+}
+async function renderLaunch() {
+  const primary = document.getElementById('ln-primary');
+  const signedIn = hasAccess();
+  document.getElementById('ln-auth').textContent = authRequired ? 'Authentication required' : 'Open access (auth disabled)';
+  const u = document.getElementById('ln-user');
+  u.style.display = signedIn && session ? '' : 'none';
+  u.textContent = session ? 'Signed in as ' + shownName() : '';
+  primary.textContent = signedIn ? 'Open console' : 'Sign in';
+  try {
+    const h = await (await fetch('/v1/health')).json();
+    document.getElementById('ln-dot').className = 'dot ' + (h.status === 'ok' ? 'green' : 'yellow');
+    document.getElementById('ln-server').textContent = 'Server ' + (h.status === 'ok' ? 'online' : h.status);
+    document.getElementById('ln-version').textContent = h.version ? 'Version ' + h.version : '';
+  } catch {
+    document.getElementById('ln-dot').className = 'dot red';
+    document.getElementById('ln-server').textContent = 'Server unreachable';
+  }
+}
+function launchPrimary() {
+  if (hasAccess()) { history.pushState({}, '', '/' + prefs.landing); route(); }
+  else { history.pushState({}, '', '/login'); route(); }
+}
+function renderLogin() {
+  const open = !authRequired;
+  document.getElementById('lg-title').textContent = open ? 'Choose a profile' : 'Sign in';
+  document.getElementById('lg-sub').textContent = open ? '' : 'Use your Bastion account to continue.';
+  document.getElementById('lg-open-note').style.display = open ? '' : 'none';
+  document.getElementById('lg-pass-field').style.display = open ? 'none' : '';
+  document.getElementById('lg-user-field').querySelector('label').textContent = open ? 'Display name' : 'Username';
+  document.getElementById('lg-submit').textContent = open ? 'Continue' : 'Sign in';
+  const err = document.getElementById('lg-error');
+  if (sGet('session', 'bastion.expired')) {
+    sDel('session', 'bastion.expired');
+    err.textContent = 'Your session expired. Please sign in again.'; err.classList.add('show');
+  }
+  const last = sGet('local', LAST_USER_KEY);
+  const f = document.getElementById('lg-user');
+  if (!f.value && last && last !== 'Guest') f.value = last;
+}
+
+
+(async function init() {
+  session = loadSession();
+  await detectAuth();
+  if (!authRequired) {
+    if (!session) session = { user: sGet('local', LAST_USER_KEY) || 'Guest', role: 'admin', token: null, exp: 0 };
+  } else if (session && !session.token) session = null;
+  loadPrefs(); applyPrefs(); scheduleRefresh();
+  window.addEventListener('popstate', route);
+  route();
 })();
 </script>
 </body>

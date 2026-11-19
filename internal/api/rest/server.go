@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -320,7 +321,22 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 		// Embedded at build time; a failure here is a programmer error.
 		panic(fmt.Sprintf("rest: embed static sub: %v", err))
 	}
-	r.Handle("/*", http.FileServer(http.FS(staticRoot)))
+	fileServer := http.FileServer(http.FS(staticRoot))
+	r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// Client-side routes (/launch, /login, /activity, ...) have no file on
+		// disk; serve the SPA shell so deep links and reloads work. API and
+		// WebSocket paths keep their normal 404 behaviour.
+		name := strings.TrimPrefix(req.URL.Path, "/")
+		if name != "" && !strings.HasPrefix(name, "v1/") && !strings.HasPrefix(name, "ws/") {
+			if _, err := fs.Stat(staticRoot, name); err != nil {
+				req2 := req.Clone(req.Context())
+				req2.URL.Path = "/"
+				fileServer.ServeHTTP(w, req2)
+				return
+			}
+		}
+		fileServer.ServeHTTP(w, req)
+	}))
 
 	return r
 }
