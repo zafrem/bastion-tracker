@@ -39,6 +39,9 @@ type ExceptionsConfig struct {
 	SigningKey string `yaml:"signing_key"`
 	// File is where Tracker persists exceptions so they survive a restart.
 	File string `yaml:"file"`
+	// PreviousPublicKeys (comma-separated) lets Tracker still load state saved
+	// under an earlier signing key after a rotation.
+	PreviousPublicKeys string `yaml:"previous_public_keys"`
 }
 
 // AnomalyConfig controls the statistical and pattern-based anomaly detector.

@@ -228,7 +228,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// Scoped exceptions: signed by Tracker, pushed to modules, which keep their
 	// own persisted copy. Off unless a signing key is configured.
-	excMgr, eerr := exceptions.NewManager(cfg.Exceptions.SigningKey, cfg.Exceptions.File)
+	excMgr, eerr := exceptions.NewManager(cfg.Exceptions.SigningKey, cfg.Exceptions.File, cfg.Exceptions.PreviousPublicKeys)
 	if eerr != nil {
 		return fmt.Errorf("exceptions: %w", eerr)
 	}

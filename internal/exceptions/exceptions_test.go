@@ -15,7 +15,7 @@ func newPair(t *testing.T) (*Manager, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(priv, filepath.Join(t.TempDir(), "tracker-exc.json"))
+	m, err := NewManager(priv, filepath.Join(t.TempDir(), "tracker-exc.json"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +49,7 @@ func TestValidate(t *testing.T) {
 		"too long":        func(e *Exception) { e.ExpiresAt = time.Now().Add(MaxLifetime + 24*time.Hour) },
 		"no module":       func(e *Exception) { e.Modules = nil },
 		"unknown module":  func(e *Exception) { e.Modules = []string{"sentinel", "nope"} },
+		"unknown rule":    func(e *Exception) { e.Rule = "sentinel.format.skip" },
 		"rule/module mismatch": func(e *Exception) {
 			e.Rule = "vault.mask:email"
 		},
@@ -66,7 +67,7 @@ func TestValidate(t *testing.T) {
 }
 
 func TestDisabledWithoutKeys(t *testing.T) {
-	m, _ := NewManager("", "")
+	m, _ := NewManager("", "", "")
 	if _, err := m.Create(sample(), "a"); err != ErrDisabled {
 		t.Errorf("got %v, want ErrDisabled", err)
 	}
@@ -148,7 +149,7 @@ func TestRejectsForgedAndTamperedEnvelopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	env, _ := m.Export()
-	env.Payload = json.RawMessage(strings.Replace(string(env.Payload), `"acme"`, `"evil"`, 1))
+	env.Payload = []byte(strings.Replace(string(env.Payload), `"acme"`, `"evil"`, 1))
 	if err := c.Apply(env); err == nil {
 		t.Error("tampered payload was accepted")
 	}
@@ -202,9 +203,10 @@ func TestEditedFileGrantsNothing(t *testing.T) {
 	m, pub := newPair(t)
 	_, _ = m.Create(sample(), "admin")
 	env, _ := m.Export()
+	good0 := env
 	file := filepath.Join(t.TempDir(), "exc.json")
+	env.Payload = []byte(strings.Replace(string(env.Payload), "acme", "evil", 1)) // edit the signed content
 	data, _ := json.Marshal([]Envelope{env})
-	data = []byte(strings.Replace(string(data), "acme", "evil", 1)) // JSON-escaped payload edit
 	if err := os.WriteFile(file, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +215,7 @@ func TestEditedFileGrantsNothing(t *testing.T) {
 		t.Error("an edited file created exceptions")
 	}
 	// An exported envelope dropped in unchanged (air-gapped module) works.
-	good, _ := json.Marshal(env)
+	good, _ := json.Marshal(good0)
 	_ = os.WriteFile(file, good, 0o600)
 	c2, _ := NewClient("sentinel", pub, file)
 	if _, ok := c2.Allowed("sentinel.out.pii:email", "acme", "u"); !ok {
@@ -224,11 +226,100 @@ func TestEditedFileGrantsNothing(t *testing.T) {
 func TestManagerRestartKeepsVersionsMonotonic(t *testing.T) {
 	priv, _, _ := GenerateKeyPair()
 	path := filepath.Join(t.TempDir(), "t.json")
-	m1, _ := NewManager(priv, path)
+	m1, _ := NewManager(priv, path, "")
 	e, _ := m1.Create(sample(), "admin")
-	m2, _ := NewManager(priv, path)
+	m2, _ := NewManager(priv, path, "")
 	rev, err := m2.Revoke(e.ID, "admin")
 	if err != nil || rev.Version <= e.Version {
 		t.Fatalf("revocation after restart must carry a newer version: %v %v", err, rev.Version > e.Version)
+	}
+}
+
+func TestTrackerStateFileIsSignedAndTamperEvident(t *testing.T) {
+	priv, _, _ := GenerateKeyPair()
+	path := filepath.Join(t.TempDir(), "state.json")
+	m, _ := NewManager(priv, path, "")
+	if _, err := m.Create(sample(), "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewManager(priv, path, ""); err != nil {
+		t.Fatalf("untouched state must load: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	var env Envelope
+	_ = json.Unmarshal(data, &env)
+	env.Payload = []byte(strings.Replace(string(env.Payload), `"acme"`, `"evil"`, 1))
+	forged, _ := json.Marshal(env)
+	_ = os.WriteFile(path, forged, 0o600)
+	if _, err := NewManager(priv, path, ""); err == nil || !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("edited state must refuse to load, got %v", err)
+	}
+
+	// A plain, unsigned list (the way an attacker would write one) is refused too.
+	_ = os.WriteFile(path, []byte(`[{"id":"x","rule":"sentinel.out.pii:a","tenant_id":"acme"}]`), 0o600)
+	if _, err := NewManager(priv, path, ""); err == nil {
+		t.Fatal("an unsigned state file must be refused")
+	}
+}
+
+func TestKeyRotation(t *testing.T) {
+	oldPriv, oldPub, _ := GenerateKeyPair()
+	newPriv, newPub, _ := GenerateKeyPair()
+	path := filepath.Join(t.TempDir(), "state.json")
+
+	// Exceptions issued under the old key.
+	oldMgr, _ := NewManager(oldPriv, path, "")
+	e, _ := oldMgr.Create(sample(), "admin")
+	oldEnv, _ := oldMgr.Export()
+
+	// Tracker moves to the new key; without the previous key its own state would not load.
+	if _, err := NewManager(newPriv, path, ""); err == nil {
+		t.Fatal("state saved under the old key must not load without previous_public_keys")
+	}
+	newMgr, err := NewManager(newPriv, path, oldPub)
+	if err != nil {
+		t.Fatalf("state must load with the previous key listed: %v", err)
+	}
+	if len(newMgr.List()) != 1 {
+		t.Fatal("exception lost across rotation")
+	}
+	// ...and has been re-signed, so it now loads with the new key alone.
+	if _, err := NewManager(newPriv, path, ""); err != nil {
+		t.Fatalf("state should have been re-signed with the new key: %v", err)
+	}
+
+	// A module trusting only the old key rejects new-key messages; during
+	// rotation it lists both and accepts old and new.
+	oldOnly, _ := NewClient("sentinel", oldPub, "")
+	both, _ := NewClient("sentinel", newPub+","+oldPub, "")
+	rev, _ := newMgr.Revoke(e.ID, "admin")
+	newEnv := envFor(t, newMgr, rev)
+	if err := oldOnly.Apply(newEnv); err == nil {
+		t.Error("a module that has not been given the new key must reject it")
+	}
+	if err := both.Apply(oldEnv); err != nil {
+		t.Errorf("module listing both keys must accept the old key: %v", err)
+	}
+	if err := both.Apply(newEnv); err != nil {
+		t.Errorf("module listing both keys must accept the new key: %v", err)
+	}
+	if _, ok := both.Allowed("sentinel.out.pii:email", "acme", "u"); ok {
+		t.Error("revocation signed by the new key must apply")
+	}
+}
+
+func TestKnownRule(t *testing.T) {
+	for _, r := range []string{"sentinel.in:pi-001", "sentinel.out.pii:rule-1", "sentinel.out.permission",
+		"sentinel.industry:hipaa", "vault.mask:email", "vault.view:email", "navigator.purpose:marketing", "anchor.bias:gender"} {
+		if !KnownRule(r) {
+			t.Errorf("%s should be a known rule", r)
+		}
+	}
+	for _, r := range []string{"", "sentinel.in:", "navigator.tenant_isolation", "navigator.permission",
+		"vault.permission", "sentinel.out.format", "anything"} {
+		if KnownRule(r) {
+			t.Errorf("%s must not be exemptable", r)
+		}
 	}
 }

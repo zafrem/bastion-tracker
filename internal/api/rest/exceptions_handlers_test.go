@@ -44,7 +44,7 @@ func newExceptionServer(t *testing.T, withKey bool) (http.Handler, *store.Store,
 	if withKey {
 		key, pub, _ = exceptions.GenerateKeyPair()
 	}
-	mgr, err := exceptions.NewManager(key, filepath.Join(t.TempDir(), "exc.json"))
+	mgr, err := exceptions.NewManager(key, filepath.Join(t.TempDir(), "exc.json"), "")
 	if err != nil {
 		t.Fatal(err)
 	}

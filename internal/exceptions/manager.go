@@ -49,8 +49,17 @@ type Manager struct {
 	nc      *nats.Conn
 }
 
+// ErrStateTampered is returned when Tracker's saved exception list does not
+// verify. Tracker refuses to start rather than silently forget revocations.
+var ErrStateTampered = errors.New("exceptions: saved state failed signature verification")
+
 // NewManager builds a Manager. An empty privKeyB64 disables the feature.
-func NewManager(privKeyB64, path string) (*Manager, error) {
+//
+// The saved list is itself signed, so editing the file by hand is detected.
+// previousPubKeys (comma-separated, optional) lists the public keys of earlier
+// signing keys, so state saved before a key rotation still loads; it is
+// re-signed with the current key on the next save.
+func NewManager(privKeyB64, path, previousPubKeys string) (*Manager, error) {
 	m := &Manager{path: path, byID: map[string]Exception{}}
 	if privKeyB64 == "" {
 		return m, nil
@@ -60,7 +69,13 @@ func NewManager(privKeyB64, path string) (*Manager, error) {
 		return nil, errors.New("exceptions: signing key must be a base64 Ed25519 private key")
 	}
 	m.priv = ed25519.PrivateKey(raw)
-	m.load()
+	prev, err := ParsePublicKeys(previousPubKeys)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.load(append([]ed25519.PublicKey{m.priv.Public().(ed25519.PublicKey)}, prev...)); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -237,25 +252,33 @@ func (m *Manager) Close() {
 	}
 }
 
-func (m *Manager) load() {
+func (m *Manager) load(keys []ed25519.PublicKey) error {
 	if m.path == "" {
-		return
+		return nil
 	}
 	data, err := os.ReadFile(m.path)
 	if err != nil {
-		return
+		return nil // first run: nothing saved yet
 	}
-	var list []Exception
-	if err := json.Unmarshal(data, &list); err != nil {
-		log.Printf("[exceptions] ignoring unreadable %s: %v", m.path, err)
-		return
+	var env Envelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return fmt.Errorf("%w: %v", ErrStateTampered, err)
 	}
-	for _, e := range list {
+	p, err := Verify(keys, env)
+	if err != nil {
+		return fmt.Errorf("%w (%s): %v", ErrStateTampered, m.path, err)
+	}
+	for _, e := range p.Exceptions {
 		m.byID[e.ID] = e
 		if e.Version > m.lastVer {
 			m.lastVer = e.Version
 		}
 	}
+	// Re-sign with the current key (a no-op unless the key was rotated).
+	m.mu.Lock()
+	m.persistLocked()
+	m.mu.Unlock()
+	return nil
 }
 
 func (m *Manager) persistLocked() {
@@ -266,7 +289,11 @@ func (m *Manager) persistLocked() {
 	for _, e := range m.byID {
 		list = append(list, e)
 	}
-	data, err := json.MarshalIndent(list, "", "  ")
+	env, err := Sign(m.priv, Payload{Kind: "state", IssuedAt: time.Now().UTC(), Exceptions: list})
+	var data []byte
+	if err == nil {
+		data, err = json.MarshalIndent(env, "", "  ")
+	}
 	if err == nil {
 		err = writeFileAtomic(m.path, data)
 	}

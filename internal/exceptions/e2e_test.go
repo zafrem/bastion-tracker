@@ -41,7 +41,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 func TestE2E_PushRevokeAndSnapshot(t *testing.T) {
 	url := natsURL(t)
 	priv, pub, _ := GenerateKeyPair()
-	mgr, _ := NewManager(priv, filepath.Join(t.TempDir(), "t.json"))
+	mgr, _ := NewManager(priv, filepath.Join(t.TempDir(), "t.json"), "")
 	mgr.Connect(url)
 	defer mgr.Close()
 
@@ -112,7 +112,7 @@ func TestE2E_ForgedMessagesOnTheBusAreIgnored(t *testing.T) {
 func TestE2E_ModuleKeepsWorkingWhenTrackerGoesAway(t *testing.T) {
 	url := natsURL(t)
 	priv, pub, _ := GenerateKeyPair()
-	mgr, _ := NewManager(priv, "")
+	mgr, _ := NewManager(priv, "", "")
 	mgr.Connect(url)
 	file := filepath.Join(t.TempDir(), "mod.json")
 	c, _ := NewClient("sentinel", pub, file)
