@@ -5,7 +5,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/tracker-cli ./cmd/tracker-cli
 
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates curl \
     && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 COPY --from=builder /bin/tracker-cli /usr/local/bin/tracker-cli
