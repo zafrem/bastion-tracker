@@ -20,6 +20,7 @@ import (
 	"github.com/zafrem/bastion-tracker/internal/audit"
 	"github.com/zafrem/bastion-tracker/internal/config"
 	"github.com/zafrem/bastion-tracker/internal/demo"
+	"github.com/zafrem/bastion-tracker/internal/exceptions"
 	"github.com/zafrem/bastion-tracker/internal/honeytoken"
 	"github.com/zafrem/bastion-tracker/internal/hub"
 	"github.com/zafrem/bastion-tracker/internal/incidents"
@@ -44,6 +45,7 @@ type Server struct {
 type options struct {
 	corsOrigins []string
 	trustProxy  bool
+	exceptions  *exceptions.Manager
 }
 
 // Option customises the REST server.
@@ -58,6 +60,11 @@ func WithCORSOrigins(origins []string) Option {
 // WithTrustProxy makes the server honour X-Forwarded-For / X-Real-IP.
 func WithTrustProxy(trust bool) Option {
 	return func(o *options) { o.trustProxy = trust }
+}
+
+// WithExceptions enables the exception-management endpoints.
+func WithExceptions(m *exceptions.Manager) Option {
+	return func(o *options) { o.exceptions = m }
 }
 
 // clientIPMiddleware rewrites RemoteAddr from forwarding headers only when the
@@ -147,6 +154,7 @@ func New(
 	for _, o := range opts {
 		o(&srv.opts)
 	}
+	hh.exceptions = srv.opts.exceptions
 	srv.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		Handler:      srv.routes(hh, h, authCfg),
@@ -239,6 +247,13 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 		r.With(adminOrOpen(authCfg)).Get("/v1/users/{name}", h.GetUser)
 		r.With(adminOrOpen(authCfg)).Patch("/v1/users/{name}", h.UpdateUser)
 		r.With(adminOrOpen(authCfg)).Delete("/v1/users/{name}", h.DeleteUser)
+
+		// Exceptions — scoped exemptions pushed to modules. Admin only: they
+		// weaken enforcement, so creating one is as sensitive as managing users.
+		r.With(adminOrOpen(authCfg)).Get("/v1/exceptions", h.ListExceptions)
+		r.With(adminOrOpen(authCfg)).Post("/v1/exceptions", h.CreateException)
+		r.With(adminOrOpen(authCfg)).Post("/v1/exceptions/{id}/revoke", h.RevokeException)
+		r.With(adminOrOpen(authCfg)).Get("/v1/exceptions/export", h.ExportExceptions)
 
 		// Anomaly detection — viewer GET / operator POST
 		r.Get("/v1/anomaly/baselines", h.AnomalyBaselines)

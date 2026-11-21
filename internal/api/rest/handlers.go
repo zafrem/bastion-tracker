@@ -16,6 +16,7 @@ import (
 	"github.com/zafrem/bastion-tracker/internal/config"
 	"github.com/zafrem/bastion-tracker/internal/demo"
 	"github.com/zafrem/bastion-tracker/internal/events"
+	"github.com/zafrem/bastion-tracker/internal/exceptions"
 	"github.com/zafrem/bastion-tracker/internal/honeytoken"
 	"github.com/zafrem/bastion-tracker/internal/hub"
 	"github.com/zafrem/bastion-tracker/internal/incidents"
@@ -28,20 +29,21 @@ import (
 )
 
 type handlers struct {
-	store     *store.Store
-	hub       *hub.Hub
-	proc      *processor.Processor
-	demo      *demo.Engine
-	alerts    *alerts.Manager
-	incidents *incidents.Manager
-	anomaly   *anomaly.Detector
-	honey     *honeytoken.Manager
-	authCfg   *config.AuthConfig
-	recorder  *demo.Recorder
-	runbooks  *runbook.Manager
-	signer    *audit.Signer    // for audit verification endpoint
-	mon       *monitor.Manager // pipeline monitoring mode
-	users     *users.Manager   // runtime user management
+	store      *store.Store
+	hub        *hub.Hub
+	proc       *processor.Processor
+	demo       *demo.Engine
+	alerts     *alerts.Manager
+	incidents  *incidents.Manager
+	anomaly    *anomaly.Detector
+	honey      *honeytoken.Manager
+	authCfg    *config.AuthConfig
+	recorder   *demo.Recorder
+	runbooks   *runbook.Manager
+	signer     *audit.Signer       // for audit verification endpoint
+	mon        *monitor.Manager    // pipeline monitoring mode
+	users      *users.Manager      // runtime user management
+	exceptions *exceptions.Manager // scoped exemptions (nil/disabled unless configured)
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

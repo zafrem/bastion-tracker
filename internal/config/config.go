@@ -25,9 +25,20 @@ type Config struct {
 	BypassMonitor BypassMonitorConfig `yaml:"bypass_monitor"`
 	Monitor       MonitorConfig       `yaml:"monitor"`
 	Anomaly       AnomalyConfig       `yaml:"anomaly"`
+	Exceptions    ExceptionsConfig    `yaml:"exceptions"`
 	// DevMode skips ValidateSecurity so the demo runs with built-in keys and
 	// seed users. Never enable in production.
 	DevMode bool `yaml:"dev_mode"`
+}
+
+// ExceptionsConfig controls scoped exemptions that Tracker signs and pushes to
+// modules. The feature is off unless a signing key is set.
+type ExceptionsConfig struct {
+	// SigningKey is a base64 Ed25519 private key (env TRACKER_EXCEPTIONS_SIGNING_KEY;
+	// generate one with `tracker-cli exceptions keygen`). Modules get the public key.
+	SigningKey string `yaml:"signing_key"`
+	// File is where Tracker persists exceptions so they survive a restart.
+	File string `yaml:"file"`
 }
 
 // AnomalyConfig controls the statistical and pattern-based anomaly detector.
@@ -37,9 +48,9 @@ type AnomalyConfig struct {
 	SigmaThreshold float64 `yaml:"sigma_threshold"` // default 3.0
 	WindowHours    int     `yaml:"window_hours"`    // rolling window for baseline; default 1
 	// Pattern rules
-	HighFreqUserLimit   int    `yaml:"high_freq_user_limit"`   // requests/minute; default 30
-	RepeatedBlockWindow string `yaml:"repeated_block_window"`  // e.g. "5m"; default "5m"
-	RepeatedBlockCount  int    `yaml:"repeated_block_count"`   // blocks in window; default 3
+	HighFreqUserLimit   int    `yaml:"high_freq_user_limit"`  // requests/minute; default 30
+	RepeatedBlockWindow string `yaml:"repeated_block_window"` // e.g. "5m"; default "5m"
+	RepeatedBlockCount  int    `yaml:"repeated_block_count"`  // blocks in window; default 3
 	// Active hours: outside these hours, access is flagged (24h clock, per-tenant override TBD)
 	ActiveHoursStart int `yaml:"active_hours_start"` // 0–23; default 0 (disabled)
 	ActiveHoursEnd   int `yaml:"active_hours_end"`   // 0–23; default 0 (disabled)
@@ -109,8 +120,8 @@ type AlertRule struct {
 	Name             string   `yaml:"name"`
 	Condition        string   `yaml:"condition"`
 	Severity         string   `yaml:"severity"`
-	Channels         []string `yaml:"channels"`          // slack, email, webhook
-	EscalateAfter    string   `yaml:"escalate_after"`    // e.g. "15m"
+	Channels         []string `yaml:"channels"`           // slack, email, webhook
+	EscalateAfter    string   `yaml:"escalate_after"`     // e.g. "15m"
 	AutoResolveAfter string   `yaml:"auto_resolve_after"` // e.g. "1h"
 }
 
@@ -123,10 +134,10 @@ type AlertRule struct {
 //   bare_event_type     – match event_type regardless of module
 
 type AlertingConfig struct {
-	Enabled bool         `yaml:"enabled"`
-	Rules   []AlertRule  `yaml:"rules"`
-	Slack   SlackConfig  `yaml:"slack"`
-	Email   EmailConfig  `yaml:"email"`
+	Enabled bool          `yaml:"enabled"`
+	Rules   []AlertRule   `yaml:"rules"`
+	Slack   SlackConfig   `yaml:"slack"`
+	Email   EmailConfig   `yaml:"email"`
 	Webhook WebhookConfig `yaml:"webhook"`
 }
 
@@ -149,12 +160,12 @@ type WebhookConfig struct {
 
 // AuthConfig controls JWT authentication for the REST API.
 type AuthConfig struct {
-	Enabled        bool         `yaml:"enabled"`
-	JWTSecret      string       `yaml:"jwt_secret"`
-	JWTExpiry      string       `yaml:"jwt_expiry"`      // e.g. "24h"
-	RefreshExpiry  string       `yaml:"refresh_expiry"`  // e.g. "168h" (7 days); default = JWTExpiry
-	RequireBcrypt  bool         `yaml:"require_bcrypt"`  // reject plaintext passwords when true
-	Users          []UserConfig `yaml:"users"`
+	Enabled       bool         `yaml:"enabled"`
+	JWTSecret     string       `yaml:"jwt_secret"`
+	JWTExpiry     string       `yaml:"jwt_expiry"`     // e.g. "24h"
+	RefreshExpiry string       `yaml:"refresh_expiry"` // e.g. "168h" (7 days); default = JWTExpiry
+	RequireBcrypt bool         `yaml:"require_bcrypt"` // reject plaintext passwords when true
+	Users         []UserConfig `yaml:"users"`
 }
 
 // UserConfig represents a single API user with a role.
@@ -233,7 +244,7 @@ func Defaults() *Config {
 		},
 		Auth: AuthConfig{
 			Enabled:       false, // off by default; enable in config.yaml
-			JWTSecret:     "", // required when auth is enabled (>=32 bytes; env TRACKER_JWT_SECRET)
+			JWTSecret:     "",    // required when auth is enabled (>=32 bytes; env TRACKER_JWT_SECRET)
 			JWTExpiry:     "8h",
 			RefreshExpiry: "168h",
 			RequireBcrypt: false, // flip to true in production
@@ -278,6 +289,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("TRACKER_AUDIT_SECRET"); v != "" {
 		cfg.Storage.AuditSecret = v
+	}
+	if v := os.Getenv("TRACKER_EXCEPTIONS_SIGNING_KEY"); v != "" {
+		cfg.Exceptions.SigningKey = v
 	}
 	if v := os.Getenv("TRACKER_JWT_SECRET"); v != "" {
 		cfg.Auth.JWTSecret = v

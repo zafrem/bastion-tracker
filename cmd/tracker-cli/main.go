@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	grpcsrv "github.com/zafrem/bastion-tracker/internal/api/grpc"
-	"github.com/zafrem/bastion-tracker/internal/api/rest"
 	"github.com/zafrem/bastion-tracker/internal/alerts"
 	"github.com/zafrem/bastion-tracker/internal/anomaly"
+	grpcsrv "github.com/zafrem/bastion-tracker/internal/api/grpc"
+	"github.com/zafrem/bastion-tracker/internal/api/rest"
 	"github.com/zafrem/bastion-tracker/internal/audit"
 	"github.com/zafrem/bastion-tracker/internal/bypass"
 	"github.com/zafrem/bastion-tracker/internal/cli"
@@ -22,6 +22,7 @@ import (
 	"github.com/zafrem/bastion-tracker/internal/config"
 	"github.com/zafrem/bastion-tracker/internal/demo"
 	"github.com/zafrem/bastion-tracker/internal/events"
+	"github.com/zafrem/bastion-tracker/internal/exceptions"
 	"github.com/zafrem/bastion-tracker/internal/honeytoken"
 	"github.com/zafrem/bastion-tracker/internal/hub"
 	"github.com/zafrem/bastion-tracker/internal/incidents"
@@ -48,6 +49,22 @@ func main() {
 		Short: "Start server and immediately run all demo scenarios",
 		RunE:  runDemoServer,
 	})
+
+	excCmd := &cobra.Command{Use: "exceptions", Short: "Manage scoped-exception signing keys"}
+	excCmd.AddCommand(&cobra.Command{
+		Use:   "keygen",
+		Short: "Generate an Ed25519 key pair for signing exceptions",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			priv, pub, err := exceptions.GenerateKeyPair()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("# Tracker (secret; keep out of source control):\nTRACKER_EXCEPTIONS_SIGNING_KEY=%s\n\n", priv)
+			fmt.Printf("# Modules (public; safe to share):\nBASTION_EXCEPTIONS_PUBLIC_KEY=%s\n", pub)
+			return nil
+		},
+	})
+	root.AddCommand(excCmd)
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -209,8 +226,20 @@ func runServer(cmd *cobra.Command, args []string) error {
 		proc.SetPublisher(pub)
 	}
 
+	// Scoped exceptions: signed by Tracker, pushed to modules, which keep their
+	// own persisted copy. Off unless a signing key is configured.
+	excMgr, eerr := exceptions.NewManager(cfg.Exceptions.SigningKey, cfg.Exceptions.File)
+	if eerr != nil {
+		return fmt.Errorf("exceptions: %w", eerr)
+	}
+	if excMgr.Enabled() {
+		excMgr.Connect(cfg.NATS.URL)
+		defer excMgr.Close()
+		log.Printf("[exceptions] enabled; module public key: %s", excMgr.PublicKey())
+	}
+
 	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort,
-		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy))
+		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy), rest.WithExceptions(excMgr))
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
 	grpcSrv.EnableAuth(&cfg.Auth)
 	if !grpcSrv.AuthEnabled() {

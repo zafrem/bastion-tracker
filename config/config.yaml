@@ -70,3 +70,9 @@ logging:
 metrics:
   enabled: true
   port: 9091
+
+# Scoped exceptions: signed by Tracker and pushed to modules (see docs/23_cross_exceptions_and_user_notices.md).
+# Off unless a key is set. Generate with `tracker-cli exceptions keygen`; prefer the env var for the secret.
+exceptions:
+  signing_key: ""        # env TRACKER_EXCEPTIONS_SIGNING_KEY
+  file: ""               # e.g. /var/lib/tracker/exceptions.json so exceptions survive a restart
