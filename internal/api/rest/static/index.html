@@ -1013,6 +1013,7 @@ body[data-view="boot"] .app { display: none; }
 </div>
 
 <script>
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // ══════════════════════════════════════════════════════════════ STATE ══
 const MAX_LIVE = 300;
 let ws = null;
@@ -1151,15 +1152,15 @@ function makeLiveRow(ev) {
   row.onclick = () => showTrace(ev.trace_id);
   const time = new Date(ev.timestamp).toLocaleTimeString();
   row.innerHTML = `
-    <span class="sev ${ev.severity || 'info'}"></span>
-    <span class="mod-chip ${ev.module}">${ev.module || '?'}</span>
+    <span class="sev ${escHtml(ev.severity || 'info')}"></span>
+    <span class="mod-chip ${escHtml(ev.module)}">${escHtml(ev.module || '?')}</span>
     <div class="ev-body">
-      <div class="ev-type">${ev.event_type}</div>
-      <div class="ev-meta">${ev.tenant_id || ''}${ev.user_id ? ' · ' + ev.user_id : ''}</div>
+      <div class="ev-type">${escHtml(ev.event_type)}</div>
+      <div class="ev-meta">${escHtml(ev.tenant_id || '')}${ev.user_id ? ' · ' + escHtml(ev.user_id) : ''}</div>
     </div>
     <div class="ev-time">
       <div>${time}</div>
-      <div style="color:${ev.status==='blocked'||ev.status==='error'?'var(--red)':'var(--muted)'}">${ev.status||''}</div>
+      <div style="color:${ev.status==='blocked'||ev.status==='error'?'var(--red)':'var(--muted)'}">${escHtml(ev.status||'')}</div>
     </div>`;
   return row;
 }
@@ -1209,12 +1210,12 @@ async function loadDashAlerts() {
   const el = document.getElementById('dash-alerts');
   if (!alerts.length) { el.innerHTML = '<div class="empty">No active alerts.</div>'; return; }
   el.innerHTML = alerts.slice(0,5).map(al => `
-    <div class="alert-card ${al.severity}">
-      <div class="alert-title">${al.rule_name}</div>
-      <div class="alert-meta">${al.message}</div>
+    <div class="alert-card ${escHtml(al.severity)}">
+      <div class="alert-title">${escHtml(al.rule_name)}</div>
+      <div class="alert-meta">${escHtml(al.message)}</div>
       <div class="alert-actions">
-        <button class="btn btn-sm" onclick="ackAlert('${al.alert_id}')">Ack</button>
-        <button class="btn btn-sm danger" onclick="resolveAlert('${al.alert_id}')">Resolve</button>
+        <button class="btn btn-sm" data-a="${escHtml(al.alert_id)}" onclick="ackAlert(this.dataset.a)">Ack</button>
+        <button class="btn btn-sm danger" data-a="${escHtml(al.alert_id)}" onclick="resolveAlert(this.dataset.a)">Resolve</button>
       </div>
     </div>`).join('');
 }
@@ -1284,10 +1285,10 @@ async function refreshTopo() {
     return `<div class="topo-card">
       <span class="dot ${col}"></span>
       <div class="topo-info">
-        <div class="topo-name">${m.module}</div>
+        <div class="topo-name">${escHtml(m.module)}</div>
         <div class="topo-metrics">${m.latency_ms.toFixed(1)}ms · ${(m.error_rate*100).toFixed(1)}% err · ${m.throughput.toFixed(2)}/s</div>
       </div>
-      <span class="badge ${m.status}">${m.status}</span>
+      <span class="badge ${escHtml(m.status)}">${escHtml(m.status)}</span>
     </div>`;
   }).join('');
 }
@@ -1314,19 +1315,19 @@ async function loadTraces() {
   if (!traces.length) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No traces found.</div></td></tr>'; return; }
   tbody.innerHTML = traces.map(t => `
     <tr>
-      <td style="font-family:monospace;font-size:11px">${t.trace_id}</td>
-      <td><span class="badge">${t.pipeline_type||'?'}</span></td>
-      <td><span class="badge ${t.status}">${t.status||'?'}</span></td>
+      <td style="font-family:monospace;font-size:11px">${escHtml(t.trace_id)}</td>
+      <td><span class="badge">${escHtml(t.pipeline_type||'?')}</span></td>
+      <td><span class="badge ${escHtml(t.status)}">${escHtml(t.status||'?')}</span></td>
       <td>${(t.spans||[]).length}</td>
       <td>${t.total_ms ?? '—'}ms</td>
       <td>${t.start_time ? new Date(t.start_time).toLocaleString() : '—'}</td>
-      <td><button class="btn btn-sm" onclick="showTrace('${t.trace_id}')">View</button></td>
+      <td><button class="btn btn-sm" data-a="${escHtml(t.trace_id)}" onclick="showTrace(this.dataset.a)">View</button></td>
     </tr>`).join('');
 }
 
 async function showTrace(traceID) {
   if (!traceID) return;
-  const trace = await api('/v1/traces/' + traceID);
+  const trace = await api('/v1/traces/' + encodeURIComponent(traceID));
   if (!trace) return;
   document.getElementById('trace-modal-title').textContent = 'Trace: ' + trace.trace_id;
   const start = trace.start_time ? new Date(trace.start_time).toLocaleString() : '—';
@@ -1336,13 +1337,13 @@ async function showTrace(traceID) {
   const maxMs = Math.max(...spans.map(s => s.duration_ms||1), 1);
   document.getElementById('trace-modal-body').innerHTML = spans.length ? spans.map(s => {
     const pct = Math.max(4, Math.round((s.duration_ms||1)/maxMs*100));
-    return `<div class="span-row ${s.status||'passed'}">
+    return `<div class="span-row ${escHtml(s.status||'passed')}">
       <div style="display:flex;justify-content:space-between">
-        <span style="font-size:12px;font-weight:600">${s.module} <span style="color:var(--muted);font-weight:400">${s.event_type}</span></span>
+        <span style="font-size:12px;font-weight:600">${escHtml(s.module)} <span style="color:var(--muted);font-weight:400">${escHtml(s.event_type)}</span></span>
         <span style="font-size:11px;color:var(--muted)">${s.duration_ms ?? '?'}ms</span>
       </div>
-      <span class="badge ${s.status||'passed'}" style="margin-top:4px">${s.status||'passed'}</span>
-      <div class="timeline-bar"><div class="timeline-fill ${s.status||'passed'}" style="width:${pct}%"></div></div>
+      <span class="badge ${escHtml(s.status||'passed')}" style="margin-top:4px">${escHtml(s.status||'passed')}</span>
+      <div class="timeline-bar"><div class="timeline-fill ${escHtml(s.status||'passed')}" style="width:${pct}%"></div></div>
     </div>`;
   }).join('') : '<div class="empty">No spans.</div>';
   openModal('modal-trace');
@@ -1357,16 +1358,16 @@ async function loadAlerts() {
   if (!alerts.length) { el.innerHTML = '<div class="empty">No alerts.</div>'; return; }
   el.innerHTML = alerts.map(al => {
     const esc = al.escalated_at ? `<span class="badge escalated" style="margin-left:6px">escalated</span>` : '';
-    return `<div class="alert-card ${al.severity}">
+    return `<div class="alert-card ${escHtml(al.severity)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="alert-title">${al.rule_name} ${esc}</div>
-        <span class="badge ${al.status}">${al.status}</span>
+        <div class="alert-title">${escHtml(al.rule_name)} ${esc}</div>
+        <span class="badge ${escHtml(al.status)}">${escHtml(al.status)}</span>
       </div>
-      <div class="alert-meta">${al.message}</div>
-      <div class="alert-meta" style="margin-top:3px">Module: ${al.module} · Tenant: ${al.tenant_id||'—'} · ${new Date(al.fired_at).toLocaleString()}</div>
+      <div class="alert-meta">${escHtml(al.message)}</div>
+      <div class="alert-meta" style="margin-top:3px">Module: ${escHtml(al.module)} · Tenant: ${escHtml(al.tenant_id||'—')} · ${new Date(al.fired_at).toLocaleString()}</div>
       <div class="alert-actions">
-        <button class="btn btn-sm" onclick="ackAlert('${al.alert_id}')">Acknowledge</button>
-        <button class="btn btn-sm danger" onclick="resolveAlert('${al.alert_id}')">Resolve</button>
+        <button class="btn btn-sm" data-a="${escHtml(al.alert_id)}" onclick="ackAlert(this.dataset.a)">Acknowledge</button>
+        <button class="btn btn-sm danger" data-a="${escHtml(al.alert_id)}" onclick="resolveAlert(this.dataset.a)">Resolve</button>
       </div>
     </div>`;
   }).join('');
@@ -1379,13 +1380,13 @@ async function loadIncidents() {
   if (!incidents.length) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No incidents.</div></td></tr>'; return; }
   tbody.innerHTML = incidents.map(inc => `
     <tr>
-      <td style="font-family:monospace;font-size:11px">${inc.incident_id}</td>
-      <td>${inc.title}</td>
-      <td><span class="badge ${inc.severity}">${inc.severity}</span></td>
-      <td>${inc.tenant_id||'—'}</td>
-      <td><span class="badge ${inc.status}">${inc.status}</span></td>
+      <td style="font-family:monospace;font-size:11px">${escHtml(inc.incident_id)}</td>
+      <td>${escHtml(inc.title)}</td>
+      <td><span class="badge ${escHtml(inc.severity)}">${escHtml(inc.severity)}</span></td>
+      <td>${escHtml(inc.tenant_id||'—')}</td>
+      <td><span class="badge ${escHtml(inc.status)}">${escHtml(inc.status)}</span></td>
       <td>${inc.created_at ? new Date(inc.created_at).toLocaleString() : '—'}</td>
-      <td>${inc.status==='open'?`<button class="btn btn-sm" onclick="resolveIncident('${inc.incident_id}')">Resolve</button>`:'—'}</td>
+      <td>${inc.status==='open'?`<button class="btn btn-sm" data-a="${escHtml(inc.incident_id)}" onclick="resolveIncident(this.dataset.a)">Resolve</button>`:'—'}</td>
     </tr>`).join('');
 }
 
@@ -1396,31 +1397,31 @@ async function loadSecEvents() {
   if (!events.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No security events.</div></td></tr>'; return; }
   tbody.innerHTML = events.map(ev => `
     <tr>
-      <td style="font-family:monospace;font-size:11px">${ev.event_id}</td>
-      <td>${ev.event_type}</td>
-      <td><span class="mod-chip ${ev.module}">${ev.module}</span></td>
-      <td><span class="badge ${ev.severity}">${ev.severity}</span></td>
-      <td>${ev.tenant_id||'—'}</td>
+      <td style="font-family:monospace;font-size:11px">${escHtml(ev.event_id)}</td>
+      <td>${escHtml(ev.event_type)}</td>
+      <td><span class="mod-chip ${escHtml(ev.module)}">${escHtml(ev.module)}</span></td>
+      <td><span class="badge ${escHtml(ev.severity)}">${escHtml(ev.severity)}</span></td>
+      <td>${escHtml(ev.tenant_id||'—')}</td>
       <td>${ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
     </tr>`).join('');
 }
 
 async function ackAlert(id) {
-  await api('/v1/alerts/'+id+'/acknowledge', 'POST');
+  await api('/v1/alerts/'+encodeURIComponent(id)+'/acknowledge', 'POST');
   toast('Alert acknowledged', 'info');
   if (currentPage === 'security') loadAlerts();
   if (currentPage === 'dashboard') loadDashAlerts();
 }
 
 async function resolveAlert(id) {
-  await api('/v1/alerts/'+id+'/resolve', 'POST');
+  await api('/v1/alerts/'+encodeURIComponent(id)+'/resolve', 'POST');
   toast('Alert resolved', 'info');
   if (currentPage === 'security') loadAlerts();
   if (currentPage === 'dashboard') loadDashAlerts();
 }
 
 async function resolveIncident(id) {
-  await api('/v1/security/incidents/'+id+'/resolve', 'POST', {});
+  await api('/v1/security/incidents/'+encodeURIComponent(id)+'/resolve', 'POST', {});
   toast('Incident resolved', 'info');
   loadIncidents();
 }
@@ -1448,17 +1449,17 @@ async function loadAudit() {
   if (!events.length) { tbody.innerHTML = '<tr><td colspan="9"><div class="empty">No results.</div></td></tr>'; return; }
   tbody.innerHTML = events.map(ev => {
     const sigBadge = ev.signature
-      ? `<span title="${ev.signature.substring(0,16)}…" style="color:var(--green);font-size:13px" title="Signed">✓</span>`
+      ? `<span title="${escHtml(ev.signature.substring(0,16))}…" style="color:var(--green);font-size:13px" title="Signed">✓</span>`
       : `<span style="color:var(--muted);font-size:11px">—</span>`;
     return `<tr>
-      <td style="font-family:monospace;font-size:11px">${ev.event_id}</td>
-      <td><span class="mod-chip ${ev.module}">${ev.module}</span></td>
-      <td>${ev.event_type}</td>
-      <td><span class="badge ${ev.severity}">${ev.severity}</span></td>
-      <td><span class="badge ${ev.status}">${ev.status||'—'}</span></td>
-      <td>${ev.tenant_id||'—'}</td>
-      <td>${ev.user_id||'—'}</td>
-      <td style="font-family:monospace;font-size:11px">${ev.trace_id ? `<a href="#" onclick="showTrace('${ev.trace_id}');return false;" style="color:var(--blue)">${ev.trace_id.substring(0,8)}…</a>` : '—'}</td>
+      <td style="font-family:monospace;font-size:11px">${escHtml(ev.event_id)}</td>
+      <td><span class="mod-chip ${escHtml(ev.module)}">${escHtml(ev.module)}</span></td>
+      <td>${escHtml(ev.event_type)}</td>
+      <td><span class="badge ${escHtml(ev.severity)}">${escHtml(ev.severity)}</span></td>
+      <td><span class="badge ${escHtml(ev.status)}">${escHtml(ev.status||'—')}</span></td>
+      <td>${escHtml(ev.tenant_id||'—')}</td>
+      <td>${escHtml(ev.user_id||'—')}</td>
+      <td style="font-family:monospace;font-size:11px">${ev.trace_id ? `<a href="#" data-a="${escHtml(ev.trace_id)}" onclick="showTrace(this.dataset.a);return false;" style="color:var(--blue)">${escHtml(ev.trace_id.substring(0,8))}…</a>` : '—'}</td>
       <td style="text-align:center">${sigBadge}</td>
       <td>${ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}</td>
     </tr>`;
@@ -1477,16 +1478,16 @@ async function loadHoney() {
     const status = t.trigger_count > 0 ? 'triggered' : 'active-tok';
     const last = t.last_triggered ? new Date(t.last_triggered).toLocaleString() : 'never';
     return `<tr>
-      <td style="font-weight:600">${t.name}</td>
-      <td>${t.type}</td>
-      <td style="font-family:monospace;font-size:11px">${t.location}</td>
+      <td style="font-weight:600">${escHtml(t.name)}</td>
+      <td>${escHtml(t.type)}</td>
+      <td style="font-family:monospace;font-size:11px">${escHtml(t.location)}</td>
       <td>${t.trigger_count||0}</td>
       <td>${last}</td>
-      <td><span class="badge ${status}">${status === 'triggered' ? 'triggered' : 'active'}</span></td>
+      <td><span class="badge ${escHtml(status)}">${status === 'triggered' ? 'triggered' : 'active'}</span></td>
       <td>
         <div class="btn-group">
-          <button class="btn btn-sm" onclick="viewTriggers('${t.token_id}','${t.name}')">Triggers</button>
-          <button class="btn btn-sm danger" onclick="deleteToken('${t.token_id}')">Delete</button>
+          <button class="btn btn-sm" data-a="${escHtml(t.token_id)}" data-b="${escHtml(t.name)}" onclick="viewTriggers(this.dataset.a,this.dataset.b)">Triggers</button>
+          <button class="btn btn-sm danger" data-a="${escHtml(t.token_id)}" onclick="deleteToken(this.dataset.a)">Delete</button>
         </div>
       </td>
     </tr>`;
@@ -1521,7 +1522,7 @@ async function submitCreateToken() {
 
 async function deleteToken(id) {
   if (!confirm('Delete this honey token? This cannot be undone.')) return;
-  await api('/v1/honey-tokens/'+id, 'DELETE');
+  await api('/v1/honey-tokens/'+encodeURIComponent(id), 'DELETE');
   toast('Token deleted', 'info');
   loadHoney();
 }
@@ -1539,13 +1540,13 @@ async function loadUsers() {
   tbody.innerHTML = list.map(u => {
     const created = u.created_at ? new Date(u.created_at).toLocaleString() : '—';
     const updated = u.updated_at ? new Date(u.updated_at).toLocaleString() : '—';
-    const opts = roles.map(r => `<option value="${r}"${r === u.role ? ' selected' : ''}>${r}</option>`).join('');
+    const opts = roles.map(r => `<option value="${escHtml(r)}"${r === u.role ? ' selected' : ''}>${escHtml(r)}</option>`).join('');
     return `<tr>
-      <td style="font-weight:600">${u.name}</td>
-      <td><select onchange="changeUserRole('${u.name}', this.value)">${opts}</select></td>
+      <td style="font-weight:600">${escHtml(u.name)}</td>
+      <td><select data-a="${escHtml(u.name)}" onchange="changeUserRole(this.dataset.a, this.value)">${opts}</select></td>
       <td style="font-size:11px;color:var(--muted)">${created}</td>
       <td style="font-size:11px;color:var(--muted)">${updated}</td>
-      <td><div class="btn-group"><button class="btn btn-sm danger" onclick="deleteUser('${u.name}')">Delete</button></div></td>
+      <td><div class="btn-group"><button class="btn btn-sm danger" data-a="${escHtml(u.name)}" onclick="deleteUser(this.dataset.a)">Delete</button></div></td>
     </tr>`;
   }).join('');
 }
@@ -1593,7 +1594,7 @@ async function errMsg(r, def) {
 }
 
 async function viewTriggers(id, name) {
-  const data = await api('/v1/honey-tokens/'+id+'/triggers');
+  const data = await api('/v1/honey-tokens/'+encodeURIComponent(id)+'/triggers');
   const triggers = Array.isArray(data) ? data : [];
   document.getElementById('triggers-modal-title').textContent = 'Triggers: ' + name;
   if (!triggers.length) {
@@ -1604,10 +1605,10 @@ async function viewTriggers(id, name) {
         <thead><tr><th>Time</th><th>Event ID</th><th>Module</th><th>Tenant</th><th>User</th></tr></thead>
         <tbody>${triggers.map(t => `<tr>
           <td>${t.timestamp ? new Date(t.timestamp).toLocaleString() : '—'}</td>
-          <td style="font-family:monospace;font-size:11px">${t.event_id||'—'}</td>
-          <td><span class="mod-chip ${t.module}">${t.module||'—'}</span></td>
-          <td>${t.tenant_id||'—'}</td>
-          <td>${t.user_id||'—'}</td>
+          <td style="font-family:monospace;font-size:11px">${escHtml(t.event_id||'—')}</td>
+          <td><span class="mod-chip ${escHtml(t.module)}">${escHtml(t.module||'—')}</span></td>
+          <td>${escHtml(t.tenant_id||'—')}</td>
+          <td>${escHtml(t.user_id||'—')}</td>
         </tr>`).join('')}</tbody>
       </table>`;
   }
@@ -1628,15 +1629,15 @@ async function loadScenarios() {
     const running = active.includes(s.name);
     return `<div class="scenario-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="scenario-name">${s.name}</div>
+        <div class="scenario-name">${escHtml(s.name)}</div>
         ${running ? '<span class="badge running">running</span>' : ''}
       </div>
-      <div class="scenario-desc">${s.description}</div>
+      <div class="scenario-desc">${escHtml(s.description)}</div>
       <div class="btn-group">
-        <button class="btn btn-sm" onclick="replay('${s.name}',1)">▶ 1x</button>
-        <button class="btn btn-sm" onclick="replay('${s.name}',5)">▶ 5x</button>
-        <button class="btn btn-sm" onclick="showScenario('${s.name}')">Detail</button>
-        ${running ? `<button class="btn btn-sm danger" onclick="stopScenario('${s.name}')">⏹ Stop</button>` : ''}
+        <button class="btn btn-sm" data-a="${escHtml(s.name)}" onclick="replay(this.dataset.a,1)">▶ 1x</button>
+        <button class="btn btn-sm" data-a="${escHtml(s.name)}" onclick="replay(this.dataset.a,5)">▶ 5x</button>
+        <button class="btn btn-sm" data-a="${escHtml(s.name)}" onclick="showScenario(this.dataset.a)">Detail</button>
+        ${running ? `<button class="btn btn-sm danger" data-a="${escHtml(s.name)}" onclick="stopScenario(this.dataset.a)">⏹ Stop</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1655,7 +1656,7 @@ async function stopScenario(name) {
 }
 
 async function showScenario(name) {
-  const sc = await api('/v1/demo/scenarios/'+name);
+  const sc = await api('/v1/demo/scenarios/'+encodeURIComponent(name));
   if (!sc) return;
   document.getElementById('sc-modal-title').textContent = sc.name;
   document.getElementById('sc-modal-meta').textContent =
@@ -1664,9 +1665,9 @@ async function showScenario(name) {
   const anns = sc.annotations || [];
   const annHtml = anns.length ? `
     <div class="section-label" style="margin-bottom:6px">Annotations (${anns.length})</div>
-    ${anns.map(a => `<div class="annotation-row ${a.style||''}">
+    ${anns.map(a => `<div class="annotation-row ${escHtml(a.style||'')}">
       <div class="ann-offset">+${a.offset_ms}ms</div>
-      <div class="ann-text">${a.text}</div>
+      <div class="ann-text">${escHtml(a.text)}</div>
     </div>`).join('')}
     <div style="margin-bottom:12px"></div>` : '';
 
@@ -1677,10 +1678,10 @@ async function showScenario(name) {
       <thead><tr><th>Offset (ms)</th><th>Module</th><th>Type</th><th>Severity</th><th>Status</th></tr></thead>
       <tbody>${events.map(e => `<tr>
         <td>+${e.offset_ms}</td>
-        <td><span class="mod-chip ${e.event?.module||''}">${e.event?.module||'?'}</span></td>
-        <td>${e.event?.event_type||'?'}</td>
-        <td><span class="badge ${e.event?.severity||'info'}">${e.event?.severity||'info'}</span></td>
-        <td><span class="badge ${e.event?.status||''}">${e.event?.status||'—'}</span></td>
+        <td><span class="mod-chip ${escHtml(e.event?.module||'')}">${escHtml(e.event?.module||'?')}</span></td>
+        <td>${escHtml(e.event?.event_type||'?')}</td>
+        <td><span class="badge ${escHtml(e.event?.severity||'info')}">${escHtml(e.event?.severity||'info')}</span></td>
+        <td><span class="badge ${escHtml(e.event?.status||'')}">${escHtml(e.event?.status||'—')}</span></td>
       </tr>`).join('')}</tbody>
     </table>` : '<div class="empty">No events in scenario.</div>';
 
@@ -1746,9 +1747,9 @@ async function loadHealth() {
   if (!data) { el.innerHTML = '<div class="empty">Could not reach server.</div>'; return; }
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
-      <div><span style="color:var(--muted)">Status:</span> <span class="badge ${data.status==='ok'?'healthy':'error'}">${data.status}</span></div>
-      ${data.version ? `<div><span style="color:var(--muted)">Version:</span> ${data.version}</div>` : ''}
-      ${data.uptime ? `<div><span style="color:var(--muted)">Uptime:</span> ${data.uptime}</div>` : ''}
+      <div><span style="color:var(--muted)">Status:</span> <span class="badge ${data.status==='ok'?'healthy':'error'}">${escHtml(data.status)}</span></div>
+      ${data.version ? `<div><span style="color:var(--muted)">Version:</span> ${escHtml(data.version)}</div>` : ''}
+      ${data.uptime ? `<div><span style="color:var(--muted)">Uptime:</span> ${escHtml(data.uptime)}</div>` : ''}
       ${data.event_count !== undefined ? `<div><span style="color:var(--muted)">Events stored:</span> ${data.event_count}</div>` : ''}
     </div>`;
 }
@@ -1829,15 +1830,15 @@ function renderRunBooks(books) {
     <div class="scenario-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
-          <div class="scenario-name">${rb.name}</div>
-          <div class="scenario-desc">${rb.description}</div>
+          <div class="scenario-name">${escHtml(rb.name)}</div>
+          <div class="scenario-desc">${escHtml(rb.description)}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-            <span class="badge" style="background:rgba(0,0,0,.2);color:${catColor[rb.category]||'var(--muted)'};">${rb.category}</span>
-            <span class="badge ${rb.severity}">${rb.severity}</span>
+            <span class="badge" style="background:rgba(0,0,0,.2);color:${escHtml(catColor[rb.category]||'var(--muted)')};">${escHtml(rb.category)}</span>
+            <span class="badge ${escHtml(rb.severity)}">${escHtml(rb.severity)}</span>
             <span style="font-size:10px;color:var(--muted);align-self:center">~${rb.estimated_minutes} min</span>
           </div>
         </div>
-        <button class="btn btn-sm" onclick="showRunBook('${rb.id}')">View Steps</button>
+        <button class="btn btn-sm" data-a="${escHtml(rb.id)}" onclick="showRunBook(this.dataset.a)">View Steps</button>
       </div>
     </div>`).join('');
 }
@@ -1853,7 +1854,7 @@ function filterRunBooks() {
 }
 
 async function showRunBook(id) {
-  const rb = await api('/v1/runbooks/'+id);
+  const rb = await api('/v1/runbooks/'+encodeURIComponent(id));
   if (!rb) return;
   document.getElementById('rb-modal-title').textContent = rb.name;
   document.getElementById('rb-modal-meta').textContent =
@@ -1861,11 +1862,11 @@ async function showRunBook(id) {
   const actionIcon = { check:'🔍', command:'💻', notify:'📢', containment:'🛡', escalate:'🚨' };
   document.getElementById('rb-modal-body').innerHTML = rb.steps.map(s => `
     <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
-      <div style="min-width:28px;height:28px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0">${s.order}</div>
+      <div style="min-width:28px;height:28px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0">${escHtml(s.order)}</div>
       <div style="flex:1">
-        <div style="font-size:13px;font-weight:600;margin-bottom:3px">${actionIcon[s.action]||'•'} ${s.title}</div>
-        <div style="font-size:12px;color:var(--muted)">${s.description}</div>
-        ${s.command ? `<div style="margin-top:6px;background:var(--bg);border-radius:4px;padding:5px 8px;font-family:monospace;font-size:11px;color:var(--green)">${s.command}</div>` : ''}
+        <div style="font-size:13px;font-weight:600;margin-bottom:3px">${escHtml(actionIcon[s.action]||'•')} ${escHtml(s.title)}</div>
+        <div style="font-size:12px;color:var(--muted)">${escHtml(s.description)}</div>
+        ${s.command ? `<div style="margin-top:6px;background:var(--bg);border-radius:4px;padding:5px 8px;font-family:monospace;font-size:11px;color:var(--green)">${escHtml(s.command)}</div>` : ''}
       </div>
     </div>`).join('');
   openModal('modal-runbook');
@@ -1882,10 +1883,10 @@ async function loadDeadLetters() {
     const raw = e.raw || {};
     return `<div class="alert-card error" style="margin-bottom:6px">
       <div style="display:flex;justify-content:space-between">
-        <div class="alert-title">${e.reason}</div>
+        <div class="alert-title">${escHtml(e.reason)}</div>
         <span style="font-size:11px;color:var(--muted)">${new Date(e.received_at).toLocaleString()}</span>
       </div>
-      <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-top:6px;background:var(--bg);padding:6px;border-radius:4px;white-space:pre-wrap;word-break:break-all">${JSON.stringify(raw,null,2).substring(0,300)}</div>
+      <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-top:6px;background:var(--bg);padding:6px;border-radius:4px;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(raw,null,2).substring(0,300))}</div>
     </div>`;
   }).join('');
 }
@@ -1908,7 +1909,7 @@ async function runAuditVerify() {
       <div class="stat-card" style="flex:1;min-width:80px"><div class="val" style="font-size:22px;color:var(--red)">${result.invalid}</div><div class="lbl">Tampered</div></div>
     </div>
     <div style="font-size:13px;font-weight:600;color:${statusColor};margin-bottom:6px">${statusMsg}</div>
-    ${tampered.length ? `<div style="font-size:11px;color:var(--muted)">Tampered event IDs: ${tampered.join(', ')}</div>` : ''}
+    ${tampered.length ? `<div style="font-size:11px;color:var(--muted)">Tampered event IDs: ${escHtml(tampered.join(', '))}</div>` : ''}
     <div style="margin-top:8px;font-size:11px;color:var(--muted)">Integrity: ${pctValid}% of stored events have a valid HMAC-SHA256 seal. Unsigned events were ingested before signing was enabled.</div>`;
 }
 
@@ -1931,7 +1932,6 @@ let pendingPage = null;
 let refreshTimer = null;
 let wsStarted = false;
 
-const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function store(kind) { try { return kind === 'session' ? sessionStorage : localStorage; } catch { return null; } }
 function sGet(kind, k) { try { return store(kind)?.getItem(k) ?? null; } catch { return null; } }
 function sSet(kind, k, v) { try { store(kind)?.setItem(k, v); } catch {} }
