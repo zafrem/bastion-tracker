@@ -87,7 +87,7 @@ func (s *Store) RecentEvents(q models.QueryRequest, limit int) []models.BastionE
 		limit = 100
 	}
 
-	results := make([]models.BastionEvent, 0, limit)
+	results := make([]models.BastionEvent, 0, s.resultCap(limit))
 	size := s.maxEvents
 	if s.count < size {
 		size = s.count
@@ -752,7 +752,7 @@ func (s *Store) EventsPage(q models.QueryRequest, cursor string, limit int) mode
 		}
 	}
 
-	results := make([]models.BastionEvent, 0, limit)
+	results := make([]models.BastionEvent, 0, s.resultCap(limit))
 	for i := startIdx; i < size && len(results) < limit; i++ {
 		idx := ((s.head - 1 - i) + s.maxEvents) % s.maxEvents
 		ev := s.events[idx]
@@ -815,7 +815,7 @@ func (s *Store) SearchEvents(keyword string, limit int) []models.BastionEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	results := make([]models.BastionEvent, 0, limit)
+	results := make([]models.BastionEvent, 0, s.resultCap(limit))
 	size := s.maxEvents
 	if s.count < size {
 		size = s.count
@@ -834,4 +834,16 @@ func (s *Store) SearchEvents(keyword string, limit int) []models.BastionEvent {
 		}
 	}
 	return results
+}
+
+// resultCap bounds a result slice's preallocation by what the store can actually
+// hold, so a huge caller-supplied limit cannot force a huge allocation.
+func (s *Store) resultCap(limit int) int {
+	if limit > s.count {
+		limit = s.count
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	return limit
 }

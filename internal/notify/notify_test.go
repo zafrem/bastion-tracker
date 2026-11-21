@@ -295,3 +295,20 @@ func TestMulti_PassesAllArgs(t *testing.T) {
 		t.Errorf("expected sev=critical, got %q", capturedSev)
 	}
 }
+
+func TestHeaderSafeStripsLineBreaks(t *testing.T) {
+	if got := headerSafe("rule\r\nBcc: evil@x.com"); strings.ContainsAny(got, "\r\n") {
+		t.Errorf("line breaks survived: %q", got)
+	}
+}
+
+func TestEmailRejectsInjectedAddresses(t *testing.T) {
+	e := &EmailNotifier{SMTPHost: "127.0.0.1", SMTPPort: 1, From: "a@x.com\r\nBcc: e@x.com", To: []string{"b@x.com"}}
+	if err := e.Notify("r", "m", "high"); err == nil || !strings.Contains(err.Error(), "invalid sender") {
+		t.Errorf("want invalid sender, got %v", err)
+	}
+	e = &EmailNotifier{SMTPHost: "127.0.0.1", SMTPPort: 1, From: "a@x.com", To: []string{"b@x.com\nBcc: e@x.com"}}
+	if err := e.Notify("r", "m", "high"); err == nil || !strings.Contains(err.Error(), "invalid recipient") {
+		t.Errorf("want invalid recipient, got %v", err)
+	}
+}

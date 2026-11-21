@@ -53,11 +53,28 @@ type EmailNotifier struct {
 	Password string
 }
 
+// headerSafe strips CR and LF so a value can never end the header line and
+// inject extra headers or a new body.
+func headerSafe(v string) string {
+	return strings.NewReplacer("\r", " ", "\n", " ").Replace(v)
+}
+
 func (e *EmailNotifier) Notify(ruleName, message, severity string) error {
+	if strings.ContainsAny(e.From, "\r\n") {
+		return fmt.Errorf("email: invalid sender")
+	}
+	to := make([]string, len(e.To))
+	for i, a := range e.To {
+		if strings.ContainsAny(a, "\r\n") {
+			return fmt.Errorf("email: invalid recipient")
+		}
+		to[i] = a
+	}
+	ruleName, severity = headerSafe(ruleName), headerSafe(severity)
 	addr := fmt.Sprintf("%s:%d", e.SMTPHost, e.SMTPPort)
 	subject := fmt.Sprintf("[%s] Bastion Alert: %s", strings.ToUpper(severity), ruleName)
 	body := fmt.Sprintf("Subject: %s\r\nFrom: %s\r\nTo: %s\r\n\r\n%s\r\n\r\nTime: %s\r\n",
-		subject, e.From, strings.Join(e.To, ", "), message, time.Now().Format(time.RFC3339))
+		subject, e.From, strings.Join(to, ", "), message, time.Now().Format(time.RFC3339))
 	var a smtp.Auth
 	if e.Username != "" {
 		a = smtp.PlainAuth("", e.Username, e.Password, e.SMTPHost)
