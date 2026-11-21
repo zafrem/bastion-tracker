@@ -285,7 +285,7 @@ func Defaults() *Config {
 // TRACKER_GRPC_PORT override the corresponding keys.
 func Load(path string) (*Config, error) {
 	cfg := Defaults()
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { // #nosec G304 -- path comes from operator config or CLI, not request input
 		if err := yaml.Unmarshal(data, cfg); err != nil {
 			return cfg, err
 		}
