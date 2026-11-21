@@ -94,12 +94,12 @@ func streamCmd() *cobra.Command {
 				}
 				ts := ev.Timestamp.Format("15:04:05.000")
 				icon := severityIcon(ev.Severity)
-				fmt.Printf("%s %s [%s] %s", ts, icon, padRight(ev.Module, 10), ev.EventType)
+				fmt.Printf("%s %s [%s] %s", ts, icon, padRight(cleanText(ev.Module), 10), cleanText(ev.EventType))
 				if ev.DurationMs > 0 {
 					fmt.Printf(" (%dms)", ev.DurationMs)
 				}
 				if ev.TenantID != "" {
-					fmt.Printf(" tenant=%s", ev.TenantID)
+					fmt.Printf(" tenant=%s", cleanText(ev.TenantID))
 				}
 				fmt.Println()
 			}
@@ -419,4 +419,16 @@ func padRight(s string, n int) string {
 		s += " "
 	}
 	return s[:n]
+}
+
+// cleanText replaces control characters (including terminal escapes and line
+// breaks) in event data before it is printed, so a crafted event cannot forge
+// output lines or drive the terminal.
+func cleanText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '_'
+		}
+		return r
+	}, s)
 }

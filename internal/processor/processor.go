@@ -103,7 +103,7 @@ func (p *Processor) Process(ev models.BastionEvent) {
 	if p.validator != nil {
 		if err := p.validator.Validate(&ev); err != nil {
 			p.validator.Reject(ev, err.Error())
-			log.Printf("[processor] event rejected: %s", err)
+			log.Printf("[processor] event rejected: %q", err.Error())
 			return
 		}
 	}
@@ -155,7 +155,7 @@ func (p *Processor) Process(ev models.BastionEvent) {
 
 	// Honey-token detection.
 	if tokenID := p.honey.CheckEvent(ev); tokenID != "" {
-		log.Printf("[processor] honey-token triggered: %s (event=%s)", tokenID, ev.EventID)
+		log.Printf("[processor] honey-token triggered: %q (event=%q)", tokenID, ev.EventID)
 		if p.pub != nil {
 			trigID := fmt.Sprintf("%s-trg-%s", tokenID, ev.EventID)
 			p.pub.Publish(events.EventHoneyTokenAlert(tokenID, trigID, ev.TenantID, ev.TraceID))
