@@ -235,7 +235,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if excMgr.Enabled() {
 		excMgr.Connect(cfg.NATS.URL)
 		defer excMgr.Close()
-		log.Printf("[exceptions] enabled; module public key: %s", excMgr.PublicKey())
+		log.Printf("[exceptions] enabled; module public key: %s", excMgr.PublicKey()) // #nosec G706 -- this module's own public key, not request input
 	}
 
 	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort,
@@ -249,7 +249,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("gRPC TLS: %w", err)
 	}
 	if grpcSrv.TLSEnabled() {
-		log.Printf("[grpc] TLS enabled (mutual TLS: %v)", cfg.Server.GRPCTLSClientCA != "")
+		log.Printf("[grpc] TLS enabled (mutual TLS: %v)", cfg.Server.GRPCTLSClientCA != "") // #nosec G706 -- a boolean derived from operator config
 	}
 
 	go al.StartBackgroundTasks(ctx)

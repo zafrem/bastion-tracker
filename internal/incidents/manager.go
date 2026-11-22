@@ -28,7 +28,7 @@ func honeyTokenTitle(ev models.BastionEvent) string {
 	if tokenID == "" {
 		tokenID, _ = ev.Data["token_id"].(string)
 	}
-	layer := map[string]string{
+	layer := map[string]string{ // #nosec G101 -- event-type names, not credentials
 		"honey_token_triggered":  "triggered",
 		"honey_token_accessed":   "data-layer access (Vault)",
 		"honey_token_retrieved":  "search-layer retrieval (Navigator)",

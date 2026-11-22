@@ -63,7 +63,7 @@ func (c *NATSCollector) handle(msg *nats.Msg) {
 // Close drains and closes the NATS connection.
 func (c *NATSCollector) Close() {
 	for _, sub := range c.subs {
-		sub.Drain()
+		_ = sub.Drain()
 	}
-	c.conn.Drain()
+	_ = c.conn.Drain()
 }

@@ -130,7 +130,7 @@ func honeyTokenDetection() models.DemoScenario {
 			ev(0, "sentinel", "request_received", "info", "passed", "full", "tenant-acme", "attacker@external", rID, 0, nil),
 			ev(10, "sentinel", "validation_passed", "info", "passed", "full", "tenant-acme", "attacker@external", rID, 10, nil),
 			ev(80, "navigator", "search_completed", "info", "passed", "full", "tenant-acme", "attacker@external", rID, 50, nil),
-			ev(500, "security", "honey_token_triggered", "critical", "error", "full", "tenant-acme", "attacker@external", rID, 0, map[string]any{"token_id": "HT-0001", "token_name": "Fake CEO Email", "source_ip": "192.168.1.123"}),
+			ev(500, "security", "honey_token_triggered", "critical", "error", "full", "tenant-acme", "attacker@external", rID, 0, map[string]any{"token_id": "HT-0001", "token_name": "Fake CEO Email", "source_ip": "192.168.1.123"}), // #nosec G101 -- demo data
 		},
 		Annotations: []models.Annotation{
 			{OffsetMs: 75, Text: "Attacker retrieves search results containing decoy data", Style: "warning"},

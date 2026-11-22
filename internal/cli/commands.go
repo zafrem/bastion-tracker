@@ -67,7 +67,7 @@ func streamCmd() *cobra.Command {
 
 			sig := make(chan os.Signal, 1)
 			signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-			go func() { <-sig; conn.Close() }()
+			go func() { <-sig; _ = conn.Close() }()
 
 			for {
 				_, msg, err := conn.ReadMessage()
@@ -370,7 +370,9 @@ func generateCmd() *cobra.Command {
 						DurationMs:   int64(10 + i%90),
 					}
 					body, _ := json.Marshal(ev)
-					apiPost("/v1/events", body) //nolint:errcheck
+					if _, err := apiPost("/v1/events", body); err != nil {
+						fmt.Fprintf(os.Stderr, "demo: event not delivered: %v\n", err)
+					}
 					i++
 				}
 			}

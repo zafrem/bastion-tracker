@@ -39,8 +39,7 @@ func (s *SlackNotifier) Notify(ruleName, message, severity string) error {
 	if err != nil {
 		return fmt.Errorf("slack: %w", err)
 	}
-	resp.Body.Close()
-	return nil
+	return finishPost("slack", resp)
 }
 
 // EmailNotifier sends alert notifications via SMTP.
@@ -99,8 +98,7 @@ func (wh *WebhookNotifier) Notify(ruleName, message, severity string) error {
 	if err != nil {
 		return fmt.Errorf("webhook: %w", err)
 	}
-	resp.Body.Close()
-	return nil
+	return finishPost("webhook", resp)
 }
 
 // Multi fans out to multiple notifiers and collects all errors.
@@ -122,6 +120,16 @@ func (m *Multi) Notify(ruleName, message, severity string) error {
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("notify errors: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// finishPost closes the response and reports a non-2xx status as a failed delivery. Without the status
+// check a rejected webhook (revoked URL, 404, 500) would be counted as sent.
+func finishPost(kind string, resp *http.Response) error {
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("%s: unexpected status %s", kind, resp.Status)
 	}
 	return nil
 }

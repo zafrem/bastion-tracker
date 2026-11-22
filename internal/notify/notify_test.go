@@ -312,3 +312,22 @@ func TestEmailRejectsInjectedAddresses(t *testing.T) {
 		t.Errorf("want invalid recipient, got %v", err)
 	}
 }
+
+// A webhook that answers with an error status did not receive the alert: that must surface as an error.
+func TestNotifiers_NonSuccessStatusIsAFailedDelivery(t *testing.T) {
+	for _, code := range []int{400, 404, 500} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) }))
+		if err := (&SlackNotifier{WebhookURL: srv.URL}).Notify("rule", "msg", "critical"); err == nil {
+			t.Errorf("slack: status %d must be an error", code)
+		}
+		if err := (&WebhookNotifier{URL: srv.URL}).Notify("rule", "msg", "critical"); err == nil {
+			t.Errorf("webhook: status %d must be an error", code)
+		}
+		srv.Close()
+	}
+	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+	defer ok.Close()
+	if err := (&SlackNotifier{WebhookURL: ok.URL}).Notify("rule", "msg", "info"); err != nil {
+		t.Errorf("a 204 is a success: %v", err)
+	}
+}
