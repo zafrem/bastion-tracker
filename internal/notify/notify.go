@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -58,13 +59,43 @@ func headerSafe(v string) string {
 	return strings.NewReplacer("\r", " ", "\n", " ").Replace(v)
 }
 
+// maxBodyBytes bounds the alert text placed in an email so a huge event cannot produce a huge message.
+const maxBodyBytes = 8 * 1024
+
+// bodySafe makes alert text safe to place in a plain-text email body: control characters other than tab and
+// newline are dropped (they have no place in text and some mail systems act on them), line endings are
+// normalised, and the length is bounded. The text is never interpreted as markup because the message is sent
+// as text/plain.
+func bodySafe(v string) string {
+	v = strings.ReplaceAll(strings.ReplaceAll(v, "\r\n", "\n"), "\r", "\n")
+	v = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' || (r >= 0x20 && r != 0x7f) {
+			return r
+		}
+		return -1
+	}, v)
+	if len(v) > maxBodyBytes {
+		v = strings.ToValidUTF8(v[:maxBodyBytes], "") + "\n[truncated]"
+	}
+	return strings.ReplaceAll(v, "\n", "\r\n")
+}
+
+// validAddress accepts a plain address (not "Name <addr>" and not a list) and nothing containing line breaks.
+func validAddress(a string) bool {
+	if strings.ContainsAny(a, "\r\n") {
+		return false
+	}
+	parsed, err := mail.ParseAddress(a)
+	return err == nil && parsed.Address == a
+}
+
 func (e *EmailNotifier) Notify(ruleName, message, severity string) error {
-	if strings.ContainsAny(e.From, "\r\n") {
+	if !validAddress(e.From) {
 		return fmt.Errorf("email: invalid sender")
 	}
 	to := make([]string, len(e.To))
 	for i, a := range e.To {
-		if strings.ContainsAny(a, "\r\n") {
+		if !validAddress(a) {
 			return fmt.Errorf("email: invalid recipient")
 		}
 		to[i] = a
@@ -72,8 +103,8 @@ func (e *EmailNotifier) Notify(ruleName, message, severity string) error {
 	ruleName, severity = headerSafe(ruleName), headerSafe(severity)
 	addr := fmt.Sprintf("%s:%d", e.SMTPHost, e.SMTPPort)
 	subject := fmt.Sprintf("[%s] Bastion Alert: %s", strings.ToUpper(severity), ruleName)
-	body := fmt.Sprintf("Subject: %s\r\nFrom: %s\r\nTo: %s\r\n\r\n%s\r\n\r\nTime: %s\r\n",
-		subject, e.From, strings.Join(to, ", "), message, time.Now().Format(time.RFC3339))
+	body := fmt.Sprintf("Subject: %s\r\nFrom: %s\r\nTo: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n\r\nTime: %s\r\n",
+		subject, e.From, strings.Join(to, ", "), bodySafe(message), time.Now().Format(time.RFC3339))
 	var a smtp.Auth
 	if e.Username != "" {
 		a = smtp.PlainAuth("", e.Username, e.Password, e.SMTPHost)

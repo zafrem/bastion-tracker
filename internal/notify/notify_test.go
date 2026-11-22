@@ -313,6 +313,37 @@ func TestEmailRejectsInjectedAddresses(t *testing.T) {
 	}
 }
 
+func TestBodySafe(t *testing.T) {
+	got := bodySafe("line1\rBcc: x\x00\x1b[31mred\x7f\nok\ttab")
+	if strings.ContainsAny(got, "\x00\x1b\x7f") {
+		t.Errorf("control characters survived: %q", got)
+	}
+	// every line break is CRLF, and a lone CR or LF never appears
+	if strings.Contains(strings.ReplaceAll(got, "\r\n", ""), "\n") || strings.Contains(strings.ReplaceAll(got, "\r\n", ""), "\r") {
+		t.Errorf("line endings not normalised: %q", got)
+	}
+	if !strings.Contains(got, "\ttab") {
+		t.Errorf("tab was dropped: %q", got)
+	}
+	long := bodySafe(strings.Repeat("é", maxBodyBytes))
+	if len(long) > maxBodyBytes+len("\r\n[truncated]") || !strings.HasSuffix(long, "[truncated]") {
+		t.Errorf("long body not bounded: %d bytes", len(long))
+	}
+}
+
+func TestValidAddress(t *testing.T) {
+	for _, ok := range []string{"a@x.com", "first.last+tag@sub.example.org"} {
+		if !validAddress(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	for _, bad := range []string{"", "a@x.com\r\nBcc: e@x.com", "Name <a@x.com>", "a@x.com, b@x.com", "no-at-sign", "a@x.com\n"} {
+		if validAddress(bad) {
+			t.Errorf("%q should be rejected", bad)
+		}
+	}
+}
+
 // A webhook that answers with an error status did not receive the alert: that must surface as an error.
 func TestNotifiers_NonSuccessStatusIsAFailedDelivery(t *testing.T) {
 	for _, code := range []int{400, 404, 500} {

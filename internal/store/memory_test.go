@@ -486,3 +486,40 @@ func TestTenantActivity_FiltersByTenant(t *testing.T) {
 		t.Errorf("wrong tenant in response")
 	}
 }
+
+// ─── Result limits ────────────────────────────────────────────────────────────
+
+func TestClampLimit(t *testing.T) {
+	for _, c := range []struct{ in, want int }{
+		{0, 100}, {-5, 100}, {1, 1}, {500, 500}, {maxResultLimit, maxResultLimit},
+		{maxResultLimit + 1, maxResultLimit}, {1 << 40, maxResultLimit}, {int(^uint(0) >> 1), maxResultLimit},
+	} {
+		if got := clampLimit(c.in); got != c.want {
+			t.Errorf("clampLimit(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
+// A caller-supplied limit must never size an allocation: absurd values are clamped and still work.
+func TestHugeLimitsAreHarmless(t *testing.T) {
+	s := New(50)
+	for i := 0; i < 20; i++ {
+		e := ev("sentinel", "validation_passed", "info", "passed")
+		e.EventID = e.EventID + "-" + string(rune('a'+i))
+		s.AddEvent(e)
+	}
+	huge := int(^uint(0) >> 1)
+	if got := s.RecentEvents(models.QueryRequest{}, huge); len(got) != 20 {
+		t.Errorf("RecentEvents: want all 20, got %d", len(got))
+	}
+	if got := s.SearchEvents("validation", huge); len(got) != 20 {
+		t.Errorf("SearchEvents: want all 20, got %d", len(got))
+	}
+	if got := s.RecentLogins(huge); len(got) != 0 {
+		t.Errorf("RecentLogins on an empty log: got %d", len(got))
+	}
+	allocs := testing.AllocsPerRun(5, func() { _ = s.SearchEvents("validation", huge) })
+	if allocs > 100 {
+		t.Errorf("a huge limit caused %v allocations", allocs)
+	}
+}

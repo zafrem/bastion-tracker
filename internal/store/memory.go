@@ -83,9 +83,7 @@ func (s *Store) RecentEvents(q models.QueryRequest, limit int) []models.BastionE
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if limit <= 0 {
-		limit = 100
-	}
+	limit = clampLimit(limit)
 
 	results := make([]models.BastionEvent, 0, s.resultCap(limit))
 	size := s.maxEvents
@@ -790,9 +788,7 @@ func (s *Store) RecordLogin(ev models.LoginAuditEvent) {
 
 // RecentLogins returns the last n login audit events.
 func (s *Store) RecentLogins(limit int) []models.LoginAuditEvent {
-	if limit <= 0 {
-		limit = 100
-	}
+	limit = clampLimit(limit)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.loginAudit) <= limit {
@@ -809,9 +805,7 @@ func (s *Store) RecentLogins(limit int) []models.LoginAuditEvent {
 // ─── Search (keyword) ─────────────────────────────────────────────────────────
 
 func (s *Store) SearchEvents(keyword string, limit int) []models.BastionEvent {
-	if limit <= 0 {
-		limit = 100
-	}
+	limit = clampLimit(limit)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -834,6 +828,21 @@ func (s *Store) SearchEvents(keyword string, limit int) []models.BastionEvent {
 		}
 	}
 	return results
+}
+
+// maxResultLimit is the most rows one query may return. Larger requests are clamped, not rejected: callers
+// that need more page through with a cursor. The clamp also bounds every allocation sized by the caller's limit.
+const maxResultLimit = 10000
+
+// clampLimit applies the default (100) to a missing or non-positive limit and the ceiling to a huge one.
+func clampLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+	if limit > maxResultLimit {
+		return maxResultLimit
+	}
+	return limit
 }
 
 // resultCap bounds a result slice's preallocation by what the store can actually
