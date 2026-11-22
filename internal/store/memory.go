@@ -85,7 +85,7 @@ func (s *Store) RecentEvents(q models.QueryRequest, limit int) []models.BastionE
 
 	limit = clampLimit(limit)
 
-	results := make([]models.BastionEvent, 0, s.resultCap(limit))
+	results := make([]models.BastionEvent, 0, initialResultCap)
 	size := s.maxEvents
 	if s.count < size {
 		size = s.count
@@ -750,7 +750,7 @@ func (s *Store) EventsPage(q models.QueryRequest, cursor string, limit int) mode
 		}
 	}
 
-	results := make([]models.BastionEvent, 0, s.resultCap(limit))
+	results := make([]models.BastionEvent, 0, initialResultCap)
 	for i := startIdx; i < size && len(results) < limit; i++ {
 		idx := ((s.head - 1 - i) + s.maxEvents) % s.maxEvents
 		ev := s.events[idx]
@@ -809,7 +809,7 @@ func (s *Store) SearchEvents(keyword string, limit int) []models.BastionEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	results := make([]models.BastionEvent, 0, s.resultCap(limit))
+	results := make([]models.BastionEvent, 0, initialResultCap)
 	size := s.maxEvents
 	if s.count < size {
 		size = s.count
@@ -845,17 +845,6 @@ func clampLimit(limit int) int {
 	return limit
 }
 
-// resultCap bounds a result slice's preallocation by what the store can actually
-// hold, so a huge caller-supplied limit cannot force a huge allocation.
-func (s *Store) resultCap(limit int) int {
-	if limit > maxResultLimit {
-		limit = maxResultLimit
-	}
-	if limit > s.count {
-		limit = s.count
-	}
-	if limit < 0 {
-		limit = 0
-	}
-	return limit
-}
+// initialResultCap is the fixed starting capacity of a result slice. Results grow by append up to the (clamped)
+// limit, so no allocation is ever sized by a caller-supplied value.
+const initialResultCap = 64
