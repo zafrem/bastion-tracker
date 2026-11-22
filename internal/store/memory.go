@@ -848,6 +848,9 @@ func clampLimit(limit int) int {
 // resultCap bounds a result slice's preallocation by what the store can actually
 // hold, so a huge caller-supplied limit cannot force a huge allocation.
 func (s *Store) resultCap(limit int) int {
+	if limit > maxResultLimit {
+		limit = maxResultLimit
+	}
 	if limit > s.count {
 		limit = s.count
 	}
