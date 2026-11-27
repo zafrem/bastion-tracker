@@ -5,7 +5,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/tracker-cli ./cmd/tracker-cli
 
-FROM alpine:3.22
+FROM alpine:3.24
 # Apply the distribution's security fixes on top of the (periodically rebuilt) base image.
 RUN apk upgrade --no-cache \
     && apk add --no-cache ca-certificates curl \
