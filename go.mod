@@ -6,7 +6,7 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
-	github.com/nats-io/nats.go v1.36.0
+	github.com/nats-io/nats.go v1.56.0
 	github.com/prometheus/client_golang v1.19.0
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/crypto v0.59.0
@@ -20,7 +20,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.20.5 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/nats-io/nkeys v0.4.7 // indirect
+	github.com/nats-io/nkeys v0.4.16 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/common v0.48.0 // indirect
