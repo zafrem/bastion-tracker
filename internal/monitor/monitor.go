@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
@@ -47,6 +48,8 @@ type Session struct {
 	// Status: "active" while pipeline is running, "completed" when terminal event arrives.
 	Status string `json:"status"`
 	Steps  []Step `json:"steps"`
+
+	lastSeen time.Time // when Tracker last added to the session; Timestamps come from callers
 }
 
 // Step is one module's span within a monitored session.
@@ -127,6 +130,9 @@ type Manager struct {
 	// pendingCh carries the decision for each pending checkpoint.
 	pendingCh map[string]chan CheckpointStatus
 
+	lastPrune time.Time
+	now       func() time.Time // replaced in tests
+
 	// broadcastFn is optional; wired to hub.Broadcast for WebSocket push.
 	broadcastFn func(any)
 }
@@ -150,7 +156,43 @@ func New(cfg Config) *Manager {
 		byTrace:     make(map[string]*Session),
 		checkpoints: make(map[string]*Checkpoint),
 		pendingCh:   make(map[string]chan CheckpointStatus),
+		now:         time.Now,
 	}
+}
+
+// pruneLocked drops sessions and decided checkpoints older than the retention period, at most once a minute.
+// Pending checkpoints stay: their timeout decides them.
+func (m *Manager) pruneLocked() {
+	now := m.now()
+	if now.Sub(m.lastPrune) < time.Minute {
+		return
+	}
+	m.lastPrune = now
+	cutoff := now.Add(-time.Duration(m.cfg.SessionRetentionHours) * time.Hour)
+	for id, s := range m.sessions {
+		if s.lastSeen.Before(cutoff) {
+			delete(m.sessions, id)
+			delete(m.byTrace, s.TraceID)
+		}
+	}
+	for id, cp := range m.checkpoints {
+		if cp.Status != StatusPending && cp.DecidedAt != nil && cp.DecidedAt.Before(cutoff) {
+			delete(m.checkpoints, id)
+		}
+	}
+}
+
+// snapshot copies a session so callers can read it while later events extend the original.
+func (s *Session) snapshot() *Session {
+	cp := *s
+	cp.Steps = append([]Step(nil), s.Steps...)
+	return &cp
+}
+
+// snapshot copies a checkpoint so callers can read it while it is being decided.
+func (c *Checkpoint) snapshot() *Checkpoint {
+	cp := *c
+	return &cp
 }
 
 // SetBroadcast attaches a WebSocket broadcast function (called with WSMessage-shaped any).
@@ -158,6 +200,22 @@ func (m *Manager) SetBroadcast(fn func(any)) {
 	m.mu.Lock()
 	m.broadcastFn = fn
 	m.mu.Unlock()
+}
+
+// Stats reports the monitor's current state, for monitoring.
+func (m *Manager) Stats() metrics.MonitorStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	st := metrics.MonitorStats{Sessions: len(m.sessions)}
+	now := time.Now()
+	for _, cp := range m.checkpoints {
+		if cp.Status != StatusPending {
+			continue
+		}
+		st.PendingCheckpoints++
+		st.OldestPendingWaited = max(st.OldestPendingWaited, now.Sub(cp.CreatedAt))
+	}
+	return st
 }
 
 // ─── Mode control ─────────────────────────────────────────────────────────────
@@ -178,7 +236,11 @@ func (m *Manager) SetMode(mode Mode) {
 	m.mode = mode
 	if prev == ModeGate && mode != ModeGate {
 		// Release all pending checkpoints as rejected so callers don't block forever.
+		now := m.now().UTC()
 		for id, ch := range m.pendingCh {
+			if cp, ok := m.checkpoints[id]; ok {
+				cp.Status, cp.DecidedAt = StatusRejected, &now
+			}
 			ch <- StatusRejected
 			delete(m.pendingCh, id)
 		}
@@ -190,15 +252,13 @@ func (m *Manager) SetMode(mode Mode) {
 // ObserveEvent is the Processor hook.  Called for every processed event.
 // In observe/gate mode it builds or extends a Session for the request's trace.
 func (m *Manager) ObserveEvent(ev models.BastionEvent) {
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pruneLocked()
 	mode := m.mode
-	m.mu.RUnlock()
 	if mode == ModeOff {
 		return
 	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	sess, ok := m.byTrace[ev.TraceID]
 	if !ok {
@@ -227,6 +287,7 @@ func (m *Manager) ObserveEvent(ev models.BastionEvent) {
 		Data:       ev.Data,
 	}
 	sess.Steps = append(sess.Steps, step)
+	sess.lastSeen = m.now()
 	sess.UpdatedAt = ev.Timestamp
 
 	// Terminal states: LLM response produced OR request was blocked at any layer.
@@ -248,7 +309,7 @@ func (m *Manager) ListSessions() []*Session {
 	defer m.mu.RUnlock()
 	out := make([]*Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		out = append(out, s)
+		out = append(out, s.snapshot())
 	}
 	return out
 }
@@ -258,7 +319,10 @@ func (m *Manager) GetSession(id string) (*Session, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	s, ok := m.sessions[id]
-	return s, ok
+	if !ok {
+		return nil, false
+	}
+	return s.snapshot(), true
 }
 
 // DeleteSession removes a session from memory.
@@ -322,7 +386,7 @@ func (m *Manager) CreateCheckpoint(traceID, tenantID, stage string, data map[str
 
 	// Start a background goroutine to enforce the timeout.
 	go m.enforceTimeout(cp.CheckpointID)
-	return cp
+	return cp.snapshot()
 }
 
 // WaitForDecision blocks the calling goroutine until the checkpoint is decided
@@ -378,7 +442,7 @@ func (m *Manager) Decide(checkpointID, decidedBy, decision, notes string) (*Chec
 	if m.broadcastFn != nil {
 		m.broadcastFn(models.WSMessage{Type: "monitor_checkpoint_decided", Payload: cp})
 	}
-	return cp, true
+	return cp.snapshot(), true
 }
 
 // ListCheckpoints returns checkpoints, optionally filtered to pending only.
@@ -390,7 +454,7 @@ func (m *Manager) ListCheckpoints(pendingOnly bool) []*Checkpoint {
 		if pendingOnly && cp.Status != StatusPending {
 			continue
 		}
-		out = append(out, cp)
+		out = append(out, cp.snapshot())
 	}
 	return out
 }
@@ -400,7 +464,10 @@ func (m *Manager) GetCheckpoint(id string) (*Checkpoint, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	cp, ok := m.checkpoints[id]
-	return cp, ok
+	if !ok {
+		return nil, false
+	}
+	return cp.snapshot(), true
 }
 
 // enforceTimeout auto-decides a checkpoint when it exceeds the configured timeout.

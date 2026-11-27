@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/zafrem/bastion-tracker/internal/config"
@@ -20,7 +21,7 @@ type Manager struct {
 	rules     []config.AlertRule
 	store     *store.Store
 	notifiers map[string]notify.Notifier // channel name → notifier
-	seq       int
+	seq       atomic.Int64
 }
 
 // New creates an alert Manager with per-channel notifiers.
@@ -28,6 +29,14 @@ type Manager struct {
 func New(rules []config.AlertRule, s *store.Store, notifiers map[string]notify.Notifier) *Manager {
 	if notifiers == nil {
 		notifiers = map[string]notify.Notifier{}
+	}
+	// Create the series up front so the first firing or delivery failure shows in increase().
+	for _, r := range rules {
+		metrics.AlertsFired.WithLabelValues(r.Name, r.Severity)
+	}
+	for channel := range notifiers {
+		metrics.Notifications.WithLabelValues(channel, "success")
+		metrics.Notifications.WithLabelValues(channel, "failure")
 	}
 	return &Manager{rules: rules, store: s, notifiers: notifiers}
 }
@@ -39,10 +48,10 @@ func (m *Manager) Evaluate(ev models.BastionEvent) []*models.Alert {
 		if !matches(rule.Condition, ev) {
 			continue
 		}
-		m.seq++
+		seq := m.seq.Add(1)
 		now := time.Now()
 		al := &models.Alert{
-			AlertID:  fmt.Sprintf("ALT-%04d", m.seq),
+			AlertID:  fmt.Sprintf("ALT-%04d", seq),
 			RuleName: rule.Name,
 			Severity: rule.Severity,
 			Status:   models.AlertFiring,
@@ -53,7 +62,6 @@ func (m *Manager) Evaluate(ev models.BastionEvent) []*models.Alert {
 		}
 		m.store.AddAlert(al)
 		metrics.AlertsFired.WithLabelValues(rule.Name, rule.Severity).Inc()
-		metrics.ActiveAlerts.Inc()
 		fired = append(fired, al)
 
 		// Dispatch to configured channels asynchronously.
@@ -69,11 +77,15 @@ func (m *Manager) dispatch(rule config.AlertRule, al *models.Alert) {
 		n, ok := m.notifiers[ch]
 		if !ok {
 			log.Printf("[alerts] unknown notification channel %q for rule %s", ch, rule.Name)
+			metrics.Notifications.WithLabelValues(metrics.Other, "unknown_channel").Inc()
 			continue
 		}
 		if err := n.Notify(al.RuleName, al.Message, al.Severity); err != nil {
 			log.Printf("[alerts] notify %s failed for rule %s: %v", ch, rule.Name, err)
+			metrics.Notifications.WithLabelValues(ch, "failure").Inc()
+			continue
 		}
+		metrics.Notifications.WithLabelValues(ch, "success").Inc()
 	}
 }
 
@@ -106,7 +118,6 @@ func (m *Manager) runLifecycleTick() {
 			if err == nil && now.Sub(al.FiredAt) >= d {
 				if m.store.ResolveAlert(al.AlertID) {
 					log.Printf("[alerts] auto-resolved %s (rule=%s)", al.AlertID, rule.Name)
-					metrics.ActiveAlerts.Dec()
 				}
 				continue
 			}

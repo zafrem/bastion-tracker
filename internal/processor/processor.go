@@ -109,7 +109,8 @@ func (p *Processor) Process(ev models.BastionEvent) {
 	}
 
 	// Metrics.
-	metrics.EventsReceived.WithLabelValues(ev.Module, ev.EventType).Inc()
+	module := metrics.ModuleLabel(ev.Module)
+	metrics.EventsReceived.WithLabelValues(module, metrics.EventTypeLabel(ev.EventType)).Inc()
 
 	// Sign event for audit integrity before storing.
 	if p.signer != nil {
@@ -145,7 +146,7 @@ func (p *Processor) Process(ev models.BastionEvent) {
 
 	// Pipeline stats.
 	if ev.PipelineType != "" {
-		metrics.PipelineRequests.WithLabelValues(ev.PipelineType, ev.Status).Inc()
+		metrics.PipelineRequests.WithLabelValues(metrics.PipelineLabel(ev.PipelineType), ev.Status).Inc()
 	}
 
 	// Bypass anomaly detection.
@@ -187,8 +188,9 @@ func (p *Processor) Process(ev models.BastionEvent) {
 		fn(ev)
 	}
 
-	metrics.EventsProcessed.WithLabelValues(ev.Module).Inc()
-	metrics.ProcessingDuration.WithLabelValues(ev.Module).Observe(time.Since(start).Seconds())
+	metrics.EventsProcessed.WithLabelValues(module).Inc()
+	metrics.ProcessingDuration.WithLabelValues(module).Observe(time.Since(start).Seconds())
+	metrics.LastEventTimestamp.SetToCurrentTime()
 }
 
 func newID() string {

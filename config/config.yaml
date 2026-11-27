@@ -68,8 +68,9 @@ logging:
   format: json
 
 metrics:
-  enabled: true
+  enabled: true            # serve Prometheus metrics at http://<host>:<port>/metrics (no authentication)
   port: 9091
+  expose_on_rest: false    # also serve /v1/metrics on the REST port, where it is public
 
 # Scoped exceptions: signed by Tracker and pushed to modules (see docs/23_cross_exceptions_and_user_notices.md).
 # Off unless a key is set. Generate with `tracker-cli exceptions keygen`; prefer the env var for the secret.

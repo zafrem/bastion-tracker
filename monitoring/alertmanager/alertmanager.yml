@@ -1,0 +1,43 @@
+# Alert routing for Bastion-Tracker.
+#
+# As shipped, alerts are collected and shown at http://localhost:9093 but NOT sent anywhere: add your own
+# integration to the "operators" receiver below. Keep credentials out of this file; mount them as files and use
+# the *_file settings.
+route:
+  receiver: operators
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['alertname="Watchdog"']
+      receiver: deadman
+      repeat_interval: 1m
+      group_interval: 1m
+    - matchers: ['severity="critical"']
+      receiver: operators
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  - name: operators
+    # Choose one or more, for example:
+    # slack_configs:
+    #   - api_url_file: /etc/alertmanager/secrets/slack_url
+    #     channel: "#bastion-alerts"
+    #     send_resolved: true
+    # webhook_configs:
+    #   - url_file: /etc/alertmanager/secrets/webhook_url
+    # pagerduty_configs:
+    #   - routing_key_file: /etc/alertmanager/secrets/pagerduty_key
+
+  # Point this at a dead man's switch service, which pages when the Watchdog alert stops arriving.
+  - name: deadman
+    # webhook_configs:
+    #   - url_file: /etc/alertmanager/secrets/deadman_url
+
+inhibit_rules:
+  # While Tracker itself is down, its other alerts add nothing.
+  - source_matchers: ['alertname="TrackerDown"']
+    target_matchers: ['alertname=~"Tracker.+"', 'alertname!="TrackerDown"']
+    equal: [instance]

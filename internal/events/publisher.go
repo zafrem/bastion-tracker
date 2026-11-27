@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 )
 
 const (
@@ -49,7 +51,9 @@ func New(natsURL string) *Publisher {
 		return &Publisher{}
 	}
 	nc, err := nats.Connect(natsURL,
-		nats.MaxReconnects(5),
+		nats.RetryOnFailedConnect(true),
+		nats.MaxReconnects(-1),
+		nats.IgnoreAuthErrorAbort(),
 		nats.ReconnectWait(2e9),
 		nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
 			log.Printf("[tracker-events] nats error: %v", err)
@@ -69,12 +73,30 @@ func (p *Publisher) Publish(ev TrackerEvent) {
 	}
 	go func() {
 		data, err := json.Marshal(ev)
+		if err == nil {
+			// While disconnected the client buffers messages and sends them after reconnecting.
+			err = p.nc.Publish(fmt.Sprintf("%s.%s", subjectPfx, ev.EventType), data)
+		}
 		if err != nil {
+			log.Printf("[tracker-events] publish failed: %v", err)
+			metrics.EventsPublished.WithLabelValues("failure").Inc()
 			return
 		}
-		subject := fmt.Sprintf("%s.%s", subjectPfx, ev.EventType)
-		_ = p.nc.Publish(subject, data)
+		metrics.EventsPublished.WithLabelValues("success").Inc()
 	}()
+}
+
+// Enabled reports whether this publisher has a NATS connection to report on.
+func (p *Publisher) Enabled() bool { return p != nil && p.nc != nil }
+
+// Stats describes the publisher's connection, for monitoring.
+func (p *Publisher) Stats() metrics.NATSStats {
+	st := metrics.NATSStats{Client: "publisher"}
+	if p.Enabled() {
+		st.Connected = p.nc.IsConnected()
+		st.Reconnects = p.nc.Stats().Reconnects
+	}
+	return st
 }
 
 // Close drains the NATS connection.

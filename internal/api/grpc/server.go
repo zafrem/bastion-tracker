@@ -53,8 +53,8 @@ func (s *Server) newServer(extra ...grpc.ServerOption) *grpc.Server {
 			Time:              2 * time.Minute,
 			Timeout:           20 * time.Second,
 		}),
-		grpc.ChainUnaryInterceptor(loggingInterceptor, s.unaryAuthInterceptor),
-		grpc.StreamInterceptor(s.streamAuthInterceptor),
+		grpc.ChainUnaryInterceptor(metricsUnaryInterceptor, recoveryUnaryInterceptor, loggingInterceptor, s.unaryAuthInterceptor),
+		grpc.ChainStreamInterceptor(metricsStreamInterceptor, recoveryStreamInterceptor, s.streamAuthInterceptor),
 	}
 	if s.tlsCreds != nil {
 		opts = append(opts, grpc.Creds(s.tlsCreds))

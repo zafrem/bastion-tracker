@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: bastion
+    folder: Bastion
+    type: file
+    options:
+      path: /var/lib/grafana-dashboards

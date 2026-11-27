@@ -4,6 +4,7 @@ package incidents
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/zafrem/bastion-tracker/internal/metrics"
@@ -14,7 +15,7 @@ import (
 // Manager creates and updates incidents.
 type Manager struct {
 	store *store.Store
-	seq   int
+	seq   atomic.Int64
 }
 
 // New creates a Manager backed by the given store.
@@ -68,9 +69,9 @@ func (m *Manager) AutoCreate(ev models.BastionEvent) *models.Incident {
 		}
 	}
 
-	m.seq++
+	seq := m.seq.Add(1)
 	inc := &models.Incident{
-		IncidentID:  fmt.Sprintf("INC-%04d", m.seq),
+		IncidentID:  fmt.Sprintf("INC-%04d", seq),
 		Title:       title,
 		Severity:    ev.Severity,
 		Status:      models.IncidentOpen,

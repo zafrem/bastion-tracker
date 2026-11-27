@@ -1,0 +1,240 @@
+# Alerting rules for Bastion-Tracker. Thresholds are starting points; tune them to your traffic.
+groups:
+  - name: tracker-availability
+    rules:
+      - alert: TrackerDown
+        expr: "up{job=\"tracker\"} == 0"
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tracker {{ $labels.instance }} is not answering scrapes"
+          description: "Check the process and its logs; events are not being recorded while it is down."
+      - alert: TrackerTargetMissing
+        expr: "absent(up{job=\"tracker\"})"
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus has no Tracker target"
+          description: "Check scrape_configs and service discovery; none of the other Tracker alerts can fire."
+      - alert: TrackerRestarting
+        expr: "changes(process_start_time_seconds{job=\"tracker\"}[15m]) > 2"
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker restarted more than twice in 15 minutes"
+          description: "Check the logs and memory limits. Each restart clears the in-memory store."
+      - alert: TrackerNATSDisconnected
+        expr: "tracker_nats_connected{client=\"collector\"} == 0"
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tracker is not receiving events from NATS"
+          description: "Check NATS and nats.url. Core NATS does not keep messages, so events sent meanwhile are lost."
+      - alert: TrackerNATSSideChannelDisconnected
+        expr: "tracker_nats_connected{client!=\"collector\"} == 0"
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker NATS connection {{ $labels.client }} is down"
+          description: "Tracker's own events or exception updates are not reaching modules."
+  - name: tracker-ingestion
+    rules:
+      - alert: TrackerNATSMessagesDropped
+        expr: "increase(tracker_nats_messages_dropped_total[5m]) > 0"
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker is dropping NATS messages"
+          description: "Processing is slower than the incoming rate; check processing latency and CPU."
+      - alert: TrackerInvalidMessages
+        expr: "increase(tracker_nats_decode_errors_total[5m]) > 0"
+        labels:
+          severity: warning
+        annotations:
+          summary: "NATS messages that are not valid events are being discarded"
+          description: "Find the publisher; the subject is in Tracker's log."
+      - alert: TrackerEventRejectionRatioHigh
+        expr: |-
+          sum by (instance) (rate(tracker_events_rejected_total[5m]))
+            / (sum by (instance) (rate(tracker_events_received_total[5m])) + sum by (instance) (rate(tracker_events_rejected_total[5m])))
+            > 0.05
+          and sum by (instance) (rate(tracker_events_rejected_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of events fail schema validation"
+          description: "See GET /v1/dead-letter for the reasons."
+      - alert: TrackerEventsStopped
+        expr: |-
+          sum by (instance) (increase(tracker_events_received_total[30m])) == 0
+          and sum by (instance) (increase(tracker_events_received_total[30m] offset 30m)) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Events stopped arriving"
+          description: "No events in 30 minutes after earlier traffic. Check that the modules are publishing."
+      - alert: TrackerProcessingSlow
+        expr: "histogram_quantile(0.99, sum by (instance, le) (rate(tracker_event_processing_duration_seconds_bucket[5m]))) > 0.1"
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "99th percentile event processing is above 100 ms"
+          description: "Check CPU and the size of the in-memory store."
+      - alert: TrackerHistoryTooShort
+        expr: "tracker_store_event_capacity / rate(tracker_store_events_written_total[10m]) < 300"
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The event buffer holds less than 5 minutes of history"
+          description: "Raise storage.max_events_memory."
+  - name: tracker-api
+    rules:
+      - alert: TrackerHTTPErrorRatioHigh
+        expr: |-
+          sum by (instance) (rate(tracker_http_requests_total{code=~"5.."}[5m]))
+            / sum by (instance) (rate(tracker_http_requests_total[5m])) > 0.05
+          and sum by (instance) (rate(tracker_http_requests_total{code=~"5.."}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of HTTP requests fail with a server error"
+          description: "Check the logs for the failing route."
+      - alert: TrackerHTTPLatencyHigh
+        expr: "histogram_quantile(0.95, sum by (instance, le) (rate(tracker_http_request_duration_seconds_bucket{route!~\"/ws/.*|/v1/events/export\"}[5m]))) > 1"
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "95th percentile HTTP latency is above 1 s"
+          description: "Break tracker_http_request_duration_seconds down by route."
+      - alert: TrackerGRPCErrorRatioHigh
+        expr: |-
+          sum by (instance) (rate(tracker_grpc_requests_total{code=~"Internal|Unknown|Unavailable|DataLoss|DeadlineExceeded|ResourceExhausted"}[5m]))
+            / sum by (instance) (rate(tracker_grpc_requests_total[5m])) > 0.05
+          and sum by (instance) (rate(tracker_grpc_requests_total{code=~"Internal|Unknown|Unavailable|DataLoss|DeadlineExceeded|ResourceExhausted"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of gRPC calls fail with a server error"
+          description: "Check the logs for the failing method."
+      - alert: TrackerPanics
+        expr: "increase(tracker_panics_total[10m]) > 0"
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tracker recovered from a panic ({{ $labels.component }})"
+          description: "This is a bug; the stack trace is in the log."
+  - name: tracker-delivery
+    rules:
+      - alert: TrackerNotificationsFailing
+        expr: "sum by (instance, channel) (increase(tracker_notifications_total{result!=\"success\"}[15m])) > 0"
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alert notifications are not being delivered (channel {{ $labels.channel }})"
+          description: "Check the channel settings under alerting in config.yaml and the log."
+      - alert: TrackerEventPublishFailing
+        expr: "increase(tracker_events_published_total{result=\"failure\"}[15m]) > 0"
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker cannot publish its own events"
+          description: "Check the NATS connection and the log."
+      - alert: TrackerLiveUpdatesDropping
+        expr: "sum by (instance) (rate(tracker_broadcast_dropped_total[5m])) > 1"
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dashboard live updates are being dropped"
+          description: "Slow WebSocket clients or a burst of events; stored data is unaffected."
+  - name: tracker-security
+    rules:
+      - alert: TrackerHoneyTokenTriggered
+        expr: "increase(tracker_honey_token_triggers_total[5m]) > 0"
+        labels:
+          severity: critical
+        annotations:
+          summary: "A honey-token was triggered"
+          description: "Treat as a possible intrusion; see GET /v1/honey-tokens/triggers."
+      - alert: TrackerCriticalIncident
+        expr: "increase(tracker_incidents_created_total{severity=\"critical\"}[5m]) > 0"
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tracker opened a critical incident"
+          description: "See GET /v1/security/incidents."
+      - alert: TrackerLoginFailuresHigh
+        expr: "sum by (instance) (increase(tracker_logins_total{result=\"failure\"}[5m])) > 20"
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 20 failed logins in 5 minutes"
+          description: "Possible password guessing; see GET /v1/auth/login-audit."
+      - alert: TrackerCheckpointWaiting
+        expr: "tracker_monitor_oldest_pending_checkpoint_seconds > 240"
+        labels:
+          severity: warning
+        annotations:
+          summary: "A gate-mode checkpoint has waited more than 4 minutes"
+          description: "Approve or reject it before it times out (monitor.checkpoint_timeout_sec, default 5 minutes)."
+  - name: tracker-resources
+    rules:
+      - alert: TrackerMemoryHigh
+        expr: "process_resident_memory_bytes{job=\"tracker\"} > 1.5e9"
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker uses more than 1.5 GB of memory"
+          description: "Adjust the threshold to your limit. Traces and lineage are kept until restart."
+      - alert: TrackerTracesAccumulating
+        expr: "tracker_store_traces > 100000"
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker holds more than 100000 traces"
+          description: "Traces are not expired; plan a restart before memory runs out."
+      - alert: TrackerGoroutinesHigh
+        expr: "go_goroutines{job=\"tracker\"} > 10000"
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker has more than 10000 goroutines"
+          description: "Possible leak or stuck calls; collect a goroutine dump."
+  - name: monitoring-pipeline
+    rules:
+      - alert: PrometheusNotificationsFailing
+        expr: "rate(prometheus_notifications_errors_total[5m]) > 0"
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot send alerts to Alertmanager"
+          description: "Check that Alertmanager is running and reachable."
+      - alert: AlertmanagerDeliveryFailing
+        expr: "increase(alertmanager_notifications_failed_total[15m]) > 0"
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager cannot deliver to {{ $labels.integration }}"
+          description: "Check the receiver settings and credentials."
+      - alert: Watchdog
+        expr: "vector(1)"
+        labels:
+          severity: none
+        annotations:
+          summary: "Always firing; proves the alerting path works"
+          description: "Route it to a dead man's switch, which should page when it stops arriving."

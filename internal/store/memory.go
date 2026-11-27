@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
@@ -46,6 +47,29 @@ func New(maxEvents int) *Store {
 		lineage:    make(map[string][]models.ChunkLineageEntry),
 		loginAudit: make([]models.LoginAuditEvent, 0, 256),
 	}
+}
+
+// Stats reports what the store holds, for monitoring.
+func (s *Store) Stats() metrics.StoreStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	st := metrics.StoreStats{
+		Events:        min(s.count, s.maxEvents),
+		EventCapacity: s.maxEvents,
+		EventsWritten: s.count,
+		Traces:        len(s.traces),
+		LineageTraces: len(s.lineage),
+		// Open and resolved are always reported, so their series exist before the first incident.
+		Incidents: map[string]int{string(models.IncidentOpen): 0, string(models.IncidentResolved): 0},
+		Alerts:    map[[2]string]int{},
+	}
+	for _, inc := range s.incidents {
+		st.Incidents[string(inc.Status)]++
+	}
+	for _, al := range s.alerts {
+		st.Alerts[[2]string{string(al.Status), al.Severity}]++
+	}
+	return st
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────

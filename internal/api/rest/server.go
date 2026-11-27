@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/zafrem/bastion-tracker/internal/alerts"
 	"github.com/zafrem/bastion-tracker/internal/anomaly"
@@ -24,6 +23,7 @@ import (
 	"github.com/zafrem/bastion-tracker/internal/honeytoken"
 	"github.com/zafrem/bastion-tracker/internal/hub"
 	"github.com/zafrem/bastion-tracker/internal/incidents"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 	"github.com/zafrem/bastion-tracker/internal/models"
 	"github.com/zafrem/bastion-tracker/internal/monitor"
 	"github.com/zafrem/bastion-tracker/internal/processor"
@@ -46,6 +46,10 @@ type options struct {
 	corsOrigins []string
 	trustProxy  bool
 	exceptions  *exceptions.Manager
+
+	metrics      http.Handler
+	noMetrics    bool
+	dependencies []dependency
 }
 
 // Option customises the REST server.
@@ -155,6 +159,14 @@ func New(
 		o(&srv.opts)
 	}
 	hh.exceptions = srv.opts.exceptions
+	hh.dependencies = srv.opts.dependencies
+	if srv.opts.metrics == nil {
+		src := metrics.Sources{Store: s.Stats}
+		if mon != nil {
+			src.Monitor = mon.Stats
+		}
+		srv.opts.metrics = metrics.Handler(src)
+	}
 	srv.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		Handler:      srv.routes(hh, h, authCfg),
@@ -187,7 +199,9 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 	r.Use(middleware.RequestID)
 	r.Use(clientIPMiddleware(s.opts.trustProxy))
 	r.Use(middleware.Logger)
+	r.Use(instrument)
 	r.Use(middleware.Recoverer)
+	r.Use(countPanics)
 	r.Use(middleware.Timeout(10 * time.Second))
 
 	// CORS: allow-list only (empty = no CORS headers).
@@ -197,7 +211,9 @@ func (s *Server) routes(h *handlers, ws *hub.Hub, authCfg *config.AuthConfig) ht
 	r.Get("/v1/health", h.Health)
 	r.Get("/v1/health/live", h.Live)
 	r.Get("/v1/health/ready", h.Ready)
-	r.Handle("/v1/metrics", promhttp.Handler())
+	if !s.opts.noMetrics {
+		r.Handle("/v1/metrics", s.opts.metrics)
+	}
 	r.Post("/v1/auth/login", h.Login)
 
 	// Protected API — apply JWT middleware when auth is enabled.

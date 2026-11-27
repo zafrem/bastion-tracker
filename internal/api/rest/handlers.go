@@ -20,6 +20,7 @@ import (
 	"github.com/zafrem/bastion-tracker/internal/honeytoken"
 	"github.com/zafrem/bastion-tracker/internal/hub"
 	"github.com/zafrem/bastion-tracker/internal/incidents"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 	"github.com/zafrem/bastion-tracker/internal/models"
 	"github.com/zafrem/bastion-tracker/internal/monitor"
 	"github.com/zafrem/bastion-tracker/internal/processor"
@@ -29,21 +30,22 @@ import (
 )
 
 type handlers struct {
-	store      *store.Store
-	hub        *hub.Hub
-	proc       *processor.Processor
-	demo       *demo.Engine
-	alerts     *alerts.Manager
-	incidents  *incidents.Manager
-	anomaly    *anomaly.Detector
-	honey      *honeytoken.Manager
-	authCfg    *config.AuthConfig
-	recorder   *demo.Recorder
-	runbooks   *runbook.Manager
-	signer     *audit.Signer       // for audit verification endpoint
-	mon        *monitor.Manager    // pipeline monitoring mode
-	users      *users.Manager      // runtime user management
-	exceptions *exceptions.Manager // scoped exemptions (nil/disabled unless configured)
+	store        *store.Store
+	hub          *hub.Hub
+	proc         *processor.Processor
+	demo         *demo.Engine
+	alerts       *alerts.Manager
+	incidents    *incidents.Manager
+	anomaly      *anomaly.Detector
+	honey        *honeytoken.Manager
+	authCfg      *config.AuthConfig
+	recorder     *demo.Recorder
+	runbooks     *runbook.Manager
+	signer       *audit.Signer    // for audit verification endpoint
+	mon          *monitor.Manager // pipeline monitoring mode
+	users        *users.Manager   // runtime user management
+	dependencies []dependency
+	exceptions   *exceptions.Manager // scoped exemptions (nil/disabled unless configured)
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -85,8 +87,10 @@ func (h *handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
+// Health reports "degraded" while a dependency is down. It still answers 200: Tracker itself is serving, and
+// whether a dependency is down is for alerting to act on (see tracker_nats_connected).
 func (h *handlers) Health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, models.HealthStatus{
+	res := models.HealthStatus{
 		Status:  "ok",
 		Version: "1.0.0",
 		Checks: map[string]string{
@@ -94,12 +98,23 @@ func (h *handlers) Health(w http.ResponseWriter, r *http.Request) {
 			"websocket":   "up",
 			"demo_engine": "up",
 		},
-	})
+	}
+	for _, d := range h.dependencies {
+		res.Checks[d.name] = "up"
+		if !d.up() {
+			res.Checks[d.name] = "down"
+			res.Status = "degraded"
+		}
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (h *handlers) Live(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "alive"})
 }
+
+// Ready does not depend on NATS: events can still arrive over REST and gRPC, and taking every replica out of
+// service because a shared dependency is down would turn a partial outage into a full one.
 func (h *handlers) Ready(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ready"})
 }
@@ -999,6 +1014,11 @@ func (h *handlers) AnomalyEvents(w http.ResponseWriter, r *http.Request) {
 // loginAuditRecord emits a LoginAuditEvent to the store; called from Login and
 // RefreshToken so every attempt is recorded.
 func (h *handlers) loginAuditRecord(username, role, sourceIP string, success bool, reason string) {
+	result := "failure"
+	if success {
+		result = "success"
+	}
+	metrics.Logins.WithLabelValues(result).Inc()
 	h.store.RecordLogin(models.LoginAuditEvent{
 		Timestamp: time.Now(),
 		Username:  username,

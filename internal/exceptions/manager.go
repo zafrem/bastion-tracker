@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 )
 
 // KnownModules are the modules an exception may target.
@@ -221,7 +223,7 @@ func (m *Manager) Connect(url string) {
 		return
 	}
 	nc, err := nats.Connect(url, nats.RetryOnFailedConnect(true), nats.MaxReconnects(-1),
-		nats.ReconnectWait(5*time.Second))
+		nats.IgnoreAuthErrorAbort(), nats.ReconnectWait(5*time.Second))
 	if err != nil {
 		log.Printf("[exceptions] nats unavailable (%v); changes are stored but not pushed", err)
 		return
@@ -240,6 +242,19 @@ func (m *Manager) Connect(url string) {
 	m.mu.Lock()
 	m.nc = nc
 	m.mu.Unlock()
+}
+
+// Stats describes the connection used to distribute exceptions, for monitoring.
+func (m *Manager) Stats() metrics.NATSStats {
+	st := metrics.NATSStats{Client: "exceptions"}
+	m.mu.Lock()
+	nc := m.nc
+	m.mu.Unlock()
+	if nc != nil {
+		st.Connected = nc.IsConnected()
+		st.Reconnects = nc.Stats().Reconnects
+	}
+	return st
 }
 
 // Close releases the NATS connection.

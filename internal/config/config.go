@@ -196,9 +196,13 @@ type LoggingConfig struct {
 	Format string `yaml:"format"`
 }
 
+// MetricsConfig controls the Prometheus metrics endpoints.
 type MetricsConfig struct {
+	// Enabled starts a dedicated, unauthenticated listener serving /metrics on Port.
 	Enabled bool `yaml:"enabled"`
 	Port    int  `yaml:"port"`
+	// ExposeOnREST also serves /v1/metrics on the REST port, where it is public even when auth is enabled.
+	ExposeOnREST bool `yaml:"expose_on_rest"`
 }
 
 // Defaults returns a usable configuration for standalone/PoC mode.
@@ -266,7 +270,7 @@ func Defaults() *Config {
 			RepeatedBlockCount:  3,
 		},
 		Logging: LoggingConfig{Level: "info", Format: "json"},
-		Metrics: MetricsConfig{Enabled: true, Port: 9091},
+		Metrics: MetricsConfig{Enabled: true, Port: 9091, ExposeOnREST: true},
 		BypassMonitor: BypassMonitorConfig{
 			Enabled:         true,
 			SensitiveLabels: []string{"pii", "sensitive", "confidential", "restricted"},

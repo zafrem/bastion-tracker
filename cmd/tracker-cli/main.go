@@ -26,6 +26,7 @@ import (
 	"github.com/zafrem/bastion-tracker/internal/honeytoken"
 	"github.com/zafrem/bastion-tracker/internal/hub"
 	"github.com/zafrem/bastion-tracker/internal/incidents"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 	"github.com/zafrem/bastion-tracker/internal/models"
 	"github.com/zafrem/bastion-tracker/internal/monitor"
 	"github.com/zafrem/bastion-tracker/internal/notify"
@@ -211,15 +212,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// NATS (optional — falls back silently if unavailable).
+	// NATS is optional. A server that is down is retried in the background; monitoring reports it meanwhile.
 	var natsCollector *collector.NATSCollector
 	if cfg.NATS.URL != "" {
 		nc, nerr := collector.Connect(cfg.NATS.URL, cfg.NATS.Subjects, proc)
 		if nerr != nil {
-			log.Printf("[nats] not connected (%v); running without NATS event ingestion", nerr)
+			log.Printf("[nats] invalid settings (%v); running without NATS event ingestion", nerr)
 		} else {
 			natsCollector = nc
-			log.Println("[nats] connected")
 		}
 		// Tracker also publishes its own events (incident_created, honey_token_alert, lineage_completed).
 		pub := events.New(cfg.NATS.URL)
@@ -238,8 +238,22 @@ func runServer(cmd *cobra.Command, args []string) error {
 		log.Printf("[exceptions] enabled; module public key: %s", excMgr.PublicKey()) // #nosec G706 -- this module's own public key, not request input
 	}
 
-	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort,
-		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy), rest.WithExceptions(excMgr))
+	sources, restMonitoring := monitoring(cfg, s, mon, natsCollector, proc.Publisher(), excMgr)
+	metricsHandler := metrics.Handler(sources)
+	restOpts := append(restMonitoring,
+		rest.WithCORSOrigins(cfg.Server.CORSAllowedOrigins), rest.WithTrustProxy(cfg.Server.TrustProxy),
+		rest.WithExceptions(excMgr), rest.WithMetricsHandler(metricsHandler))
+	if !cfg.Metrics.ExposeOnREST {
+		restOpts = append(restOpts, rest.WithoutMetricsEndpoint())
+	}
+	var metricsSrv *metrics.Server
+	if cfg.Metrics.Enabled {
+		if metricsSrv, err = metrics.Listen(fmt.Sprintf(":%d", cfg.Metrics.Port), metricsHandler); err != nil {
+			return err
+		}
+	}
+
+	restSrv := rest.New(s, h, proc, demoEng, al, inc, ht, &cfg.Auth, signer, mon, anomalyDet, cfg.Server.RESTPort, restOpts...)
 	grpcSrv := grpcsrv.New(s, proc, h, cfg.Server.GRPCPort)
 	grpcSrv.EnableAuth(&cfg.Auth)
 	if !grpcSrv.AuthEnabled() {
@@ -254,9 +268,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	go al.StartBackgroundTasks(ctx)
 
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() { errCh <- restSrv.Start(ctx) }()
 	go func() { errCh <- grpcSrv.Start(ctx) }()
+	if metricsSrv != nil {
+		go func() { errCh <- metricsSrv.Serve(ctx) }()
+	}
 
 	authStatus := "disabled"
 	if cfg.Auth.Enabled {
@@ -265,6 +282,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Bastion-Tracker v%s ready\n", cfg.Version)
 	fmt.Printf("  REST/UI  → http://localhost:%d\n", cfg.Server.RESTPort)
 	fmt.Printf("  gRPC     → localhost:%d\n", cfg.Server.GRPCPort)
+	if metricsSrv != nil {
+		fmt.Printf("  Metrics  → http://localhost:%d/metrics\n", cfg.Metrics.Port)
+	}
 	fmt.Printf("  Auth     → %s\n", authStatus)
 
 	sig := make(chan os.Signal, 1)
@@ -284,6 +304,27 @@ func runServer(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	}
+}
+
+// monitoring lists what the metrics report and what /v1/health checks. A NATS connection is reported whenever
+// the configuration calls for it, so one that could not even be created shows as down rather than being absent.
+func monitoring(cfg *config.Config, s *store.Store, mon *monitor.Manager, col *collector.NATSCollector,
+	pub *events.Publisher, exc *exceptions.Manager) (metrics.Sources, []rest.Option) {
+	src := metrics.Sources{Version: cfg.Version, Store: s.Stats, Monitor: mon.Stats}
+	var opts []rest.Option
+	if cfg.NATS.URL == "" {
+		return src, opts
+	}
+	add := func(name string, stats func() metrics.NATSStats) {
+		src.NATS = append(src.NATS, stats)
+		opts = append(opts, rest.WithDependency(name, func() bool { return stats().Connected }))
+	}
+	add("nats_collector", col.Stats)
+	add("nats_publisher", pub.Stats)
+	if exc.Enabled() {
+		add("nats_exceptions", exc.Stats)
+	}
+	return src, opts
 }
 
 func runDemoServer(cmd *cobra.Command, args []string) error {

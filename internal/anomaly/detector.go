@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zafrem/bastion-tracker/internal/config"
+	"github.com/zafrem/bastion-tracker/internal/metrics"
 	"github.com/zafrem/bastion-tracker/internal/models"
 )
 
@@ -376,6 +377,8 @@ func (d *Detector) Recent() []models.AnomalyEvent {
 }
 
 func (d *Detector) fire(ev models.AnomalyEvent) {
+	metrics.Anomalies.WithLabelValues(ev.Pattern, ev.Severity).Inc()
+
 	d.mu.Lock()
 	// Keep last 1000 events in memory.
 	if len(d.detected) >= 1000 {

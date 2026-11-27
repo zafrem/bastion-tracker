@@ -36,7 +36,7 @@ func (s *SlackNotifier) Notify(ruleName, message, severity string) error {
 		"text": fmt.Sprintf("%s *[%s]* %s — %s", emoji, strings.ToUpper(severity), ruleName, message),
 	}
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post(s.WebhookURL, "application/json", bytes.NewReader(body))
+	resp, err := httpClient.Post(s.WebhookURL, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("slack: %w", err)
 	}
@@ -52,6 +52,9 @@ type EmailNotifier struct {
 	Username string
 	Password string
 }
+
+// httpClient bounds webhook deliveries; without a timeout an unresponsive endpoint holds the delivery forever.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 // headerSafe strips CR and LF so a value can never end the header line and
 // inject extra headers or a new body.
@@ -125,7 +128,7 @@ func (wh *WebhookNotifier) Notify(ruleName, message, severity string) error {
 		"time":     time.Now().Format(time.RFC3339),
 	}
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post(wh.URL, "application/json", bytes.NewReader(body))
+	resp, err := httpClient.Post(wh.URL, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("webhook: %w", err)
 	}

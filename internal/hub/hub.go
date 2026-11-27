@@ -150,6 +150,7 @@ func (h *Hub) run() {
 				case c.send <- msg:
 				default:
 					// Slow WebSocket consumer — drop to protect throughput.
+					metrics.BroadcastsDropped.WithLabelValues("slow_client").Inc()
 				}
 			}
 			for sub := range h.subs {
@@ -157,6 +158,7 @@ func (h *Hub) run() {
 				case sub.ch <- msg:
 				default:
 					// Slow channel consumer — drop.
+					metrics.BroadcastsDropped.WithLabelValues("slow_subscriber").Inc()
 				}
 			}
 			h.mu.RUnlock()
@@ -174,6 +176,7 @@ func (h *Hub) Broadcast(msg models.WSMessage) {
 	select {
 	case h.broadcast <- data:
 	default:
+		metrics.BroadcastsDropped.WithLabelValues("queue_full").Inc()
 	}
 }
 
